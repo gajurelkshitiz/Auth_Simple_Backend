@@ -2,15 +2,22 @@ import "dotenv/config";
 import express from "express";
 import authRouter from "./auth_Router.js";
 import connectDB from "./db/connect.js";
+import adminRouter from "./routes/adminRoute.js"
 
 const app = express();
 
 app.use(express.json());
 app.use("/api/v1/auth", authRouter);
+app.use("/register", adminRouter);
 
 // test route:
 app.get("/", (req, res) => {
   res.send("Test Route is fine!");
+});
+
+
+app.get("/health-route", (req, res) => {
+  res.send("Hello this is a test route from Archana.");
 });
 
 // Error handling middleware
@@ -21,22 +28,9 @@ app.use((err, req, res, next) => {
   });
 });
 
-// const port = process.env.PORT || 5555;
-
-// const start = async () => {
-//     try {
-//         app.listen(port, () => {
-//             console.log(`Server is running on port: ${port}`);
-//         });
-//     } catch (err) {
-//         console.log("[SERVER ERROR]", err);
-//     }
-// };
-
-// start();
 
 // defing the port and ready for the server to start..
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 4000;
 
 const start = async () => {
   try {
