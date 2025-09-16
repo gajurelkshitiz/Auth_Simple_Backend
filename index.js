@@ -2,35 +2,36 @@ import "dotenv/config";
 import express from "express";
 import authRouter from "./auth_Router.js";
 import connectDB from "./db/connect.js";
-import adminRouter from "./routes/adminRoute.js"
+import adminRouter from "./routes/adminRoute.js";
+import managerRouter from "./routes/managerRoute.js";
+import staffRouter from "./routes/staffRoute.js";
+import itemRouter from "./routes/itemRoute.js";
+import areaRouter from "./routes/areaRoute.js";
+import tableRouter from "./routes/tableRoute.js";
+import orderRouter from "./routes/orderRoute.js";
 
 const app = express();
-
 app.use(express.json());
-app.use("/api/v1/auth", authRouter);
-app.use("/register", adminRouter);
 
-// test route:
+app.use("/api/v1/auth", authRouter);
+app.use("/api/v1/admin", adminRouter);
+app.use("/api/v1/managers", managerRouter);
+app.use("/api/v1/staff", staffRouter);
+app.use("/api/v1/items", itemRouter);
+app.use("/api/v1/areas", areaRouter);
+app.use("/api/v1/tables", tableRouter);
+app.use("/api/v1/orders", orderRouter);
+
 app.get("/", (req, res) => {
   res.send("Test Route is fine!");
 });
 
-
-app.get("/health-route", (req, res) => {
-  res.send("Hello this is a test route from Archana.");
-});
-
-// Error handling middleware
 app.use((err, req, res, next) => {
   console.error("[ERROR]", err);
-  res.status(500).json({
-    error: err.message || "Internal Server Error",
-  });
+  res.status(500).json({ error: err.message || "Internal Server Error" });
 });
 
-
-// defing the port and ready for the server to start..
-const port = process.env.PORT || 4000;
+const port = process.env.PORT || 3000;
 
 const start = async () => {
   try {
