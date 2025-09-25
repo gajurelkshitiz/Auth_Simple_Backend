@@ -10,7 +10,7 @@ import areaRouter from "./routes/areaRoute.js";
 import tableRouter from "./routes/tableRoute.js";
 import orderRouter from "./routes/orderRoute.js";
 import userRouter from "./routes/userRoute.js";
-import restaurantRouter from "./routes/restautantRoute.js";
+import restaurantRouter from "./routes/restaurantRoute.js";
 import authRouter from "./routes/authRoute.js";
 
 const app = express();
