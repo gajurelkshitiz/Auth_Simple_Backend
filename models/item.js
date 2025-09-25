@@ -1,31 +1,35 @@
 import mongoose from "mongoose";
 
+const variantSchema = new mongoose.Schema(
+  {
+    unit: { type: String, required: true, trim: true },
+    price: { type: Number, required: true, min: 0 },
+  },
+  { _id: false }
+);
+
 const itemSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
-    units: [
-      {
-        unitName: { type: String, required: true, trim: true },
-        price: { type: Number, required: true, min: 0 },
-      },
-    ],
-    isAvailable: { type: Boolean, default: true },
-    category: {
-      type: String,
-      enum: ["food", "drink", "other"],
-      default: "food",
-    },
+    description: { type: String, default: "" },
     image: { type: String },
-    createdBy: {
+    variants: {
+      type: [variantSchema],
+      validate: {
+        validator: (arr) => Array.isArray(arr) && arr.length > 0,
+        message: "At least one unit/price is required",
+      },
+    },
+    available: { type: Boolean, default: true },
+
+    restaurant: {
       type: mongoose.Schema.Types.ObjectId,
+      ref: "Restaurant",
       required: true,
-      ref: "Admin",
+      index: true,
     },
-    createdByModel: {
-      type: String,
-      enum: ["Admin", "Manager"],
-      required: true,
-    },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    createdByRole: { type: String },
   },
   { timestamps: true }
 );

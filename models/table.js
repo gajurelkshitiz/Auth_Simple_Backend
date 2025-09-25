@@ -2,33 +2,40 @@ import mongoose from "mongoose";
 
 const tableSchema = new mongoose.Schema(
   {
-    name: {
-      type: String,
-      required: [true, "Table name is required"],
-      trim: true,
+    name: { type: String, required: true, trim: true },
+    number: { type: String, trim: true },
+    capacity: { type: Number, default: 1, min: 1 },
+
+    area: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Area",
+      required: true,
+      index: true,
     },
-    capacity: {
-      type: Number,
-      default: 4,
-      min: [1, "Capacity must be at least 1"],
+
+    restaurant: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Restaurant",
+      required: true,
+      index: true,
     },
+
     status: {
       type: String,
-      enum: ["Available", "Occupied", "Reserved"],
-      default: "Available",
+      enum: ["available", "occupied", "reserved"],
+      default: "available",
+      index: true,
     },
-    image: { type: String },
-    area: { type: mongoose.Schema.Types.ObjectId, ref: "Area", required: true },
-    createdBy: {
+    currentOrderId: {
       type: mongoose.Schema.Types.ObjectId,
-      required: true,
-      ref: "Admin",
+      ref: "Order",
+      default: null,
+      index: true,
     },
-    createdByModel: {
-      type: String,
-      enum: ["Admin", "Manager"],
-      required: true,
-    },
+    image: { type: String, default: null },
+
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    createdByRole: { type: String },
   },
   { timestamps: true }
 );

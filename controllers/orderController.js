@@ -1,133 +1,396 @@
+import mongoose from "mongoose";
 import Order from "../models/order.js";
+import Table from "../models/table.js";
+import Area from "../models/area.js";
+import OrderCounter from "../models/orderCounter.js";
 
-const getNextOrderId = async (adminId) => {
-  const lastOrder = await Order.findOne({ adminId }).sort({ orderId: -1 });
-  return lastOrder ? lastOrder.orderId + 1 : 1;
+const ensureRestaurant = (req, res) => {
+  const restaurantId = req.user?.restaurantId;
+  if (!restaurantId) {
+    res.status(400).json({ error: "Restaurant context missing in token" });
+    return null;
+  }
+  return restaurantId;
 };
+
+async function nextOrderIdForRestaurant(restaurantId) {
+  const doc = await OrderCounter.findOneAndUpdate(
+    { restaurant: restaurantId },
+    { $inc: { seq: 1 } },
+    { new: true, upsert: true }
+  );
+  return doc.seq;
+}
+
+function computeTotals(items = []) {
+  const totalAmount = items.reduce(
+    (sum, it) => sum + Number(it.price || 0) * Number(it.quantity || 0),
+    0
+  );
+  return { totalAmount };
+}
+
+function applyPayment(order, paymentStatus, customerName) {
+  order.paymentStatus = paymentStatus;
+  if (paymentStatus === "Paid") {
+    order.paidAmount = order.totalAmount;
+    order.dueAmount = 0;
+    order.customerName = null;
+  } else if (paymentStatus === "Due") {
+    order.paidAmount = 0;
+    order.dueAmount = order.totalAmount;
+    order.customerName = null;
+  } else if (paymentStatus === "Credit") {
+    order.paidAmount = 0;
+    order.dueAmount = order.totalAmount;
+    order.customerName = customerName || null;
+  }
+}
+
+async function freeTable(tableIdOrDoc) {
+  if (!tableIdOrDoc) return;
+  if (tableIdOrDoc._id) {
+    tableIdOrDoc.status = "available";
+    if ("currentOrderId" in tableIdOrDoc) tableIdOrDoc.currentOrderId = null;
+    await tableIdOrDoc.save();
+  } else {
+    await Table.findByIdAndUpdate(tableIdOrDoc, {
+      $set: { status: "available", currentOrderId: null },
+    });
+  }
+}
+
+async function occupyTable(tableId, orderId) {
+  await Table.findByIdAndUpdate(tableId, {
+    $set: { status: "occupied", currentOrderId: orderId ?? null },
+  });
+}
+
+function validateItems(items, res) {
+  if (!Array.isArray(items) || items.length === 0) {
+    res.status(400).json({ error: "Items are required (non-empty array)" });
+    return false;
+  }
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i] ?? {};
+    if (!it.item || !mongoose.Types.ObjectId.isValid(it.item)) {
+      res
+        .status(400)
+        .json({ error: `items[${i}].item must be a valid ObjectId` });
+      return false;
+    }
+    if (!it.unitName || typeof it.unitName !== "string") {
+      res.status(400).json({ error: `items[${i}].unitName is required` });
+      return false;
+    }
+    const price = Number(it.price);
+    const qty = Number(it.quantity);
+    if (!Number.isFinite(price) || price < 0) {
+      res
+        .status(400)
+        .json({ error: `items[${i}].price must be a non-negative number` });
+      return false;
+    }
+    if (!Number.isInteger(qty) || qty < 1) {
+      res
+        .status(400)
+        .json({ error: `items[${i}].quantity must be an integer >= 1` });
+      return false;
+    }
+  }
+  return true;
+}
 
 export const createOrder = async (req, res) => {
   try {
-    const adminId = req.user.adminId;
-    const nextId = await getNextOrderId(adminId);
-    console.log("Next order id = ", nextId);
+    const restaurantId = ensureRestaurant(req, res);
+    if (!restaurantId) return;
 
-    if (
-      !req.body.items ||
-      !Array.isArray(req.body.items) ||
-      req.body.items.length === 0
-    ) {
+    const {
+      tableId,
+      items,
+      paymentStatus = "Paid",
+      customerName,
+      note,
+    } = req.body ?? {};
+
+    if (!tableId || !mongoose.Types.ObjectId.isValid(tableId)) {
+      return res.status(400).json({ error: "Invalid or missing tableId" });
+    }
+    if (!validateItems(items, res)) return;
+
+    const table = await Table.findById(tableId).populate("area", "name");
+    if (!table || table.restaurant.toString() !== restaurantId.toString()) {
+      return res
+        .status(404)
+        .json({ error: "Table not found in your restaurant" });
+    }
+
+    const areaId = table.area?._id ?? table.area;
+    if (!areaId) {
       return res
         .status(400)
-        .json({ error: "Order must contain at least one item" });
+        .json({ error: "Table has no valid area reference" });
     }
 
-    for (const item of req.body.items) {
-      if (
-        !item.itemName ||
-        !item.unitName ||
-        item.price == null ||
-        item.quantity == null
-      ) {
-        return res.status(400).json({
-          error: "Each item must have itemName, unitName, price, and quantity",
-        });
-      }
-    }
+    const orderId = await nextOrderIdForRestaurant(restaurantId);
 
-    const newOrder = await Order.create({
-      adminId,
-      orderId: nextId,
-      tableName: req.body.tableName,
-      area: req.body.area || "",
-      items: req.body.items,
-      totalAmount: req.body.totalAmount,
-      paidAmount: req.body.paidAmount || 0,
-      dueAmount: req.body.dueAmount || 0,
-      paymentStatus: req.body.paymentStatus || "Paid",
-      customerName: req.body.customerName || "",
-      note: req.body.note || "",
+    const { totalAmount } = computeTotals(items);
+
+    const order = await Order.create({
+      orderId,
+      table: table._id,
+      area: areaId,
+      restaurant: restaurantId,
+      items,
+      totalAmount,
+      paidAmount: 0,
+      dueAmount: 0,
+      paymentStatus,
+      customerName: paymentStatus === "Credit" ? customerName || null : null,
+      note,
+      checkedOut: false,
+      createdBy: req.user.userId,
     });
 
-    res
-      .status(201)
-      .json({ message: "Order created successfully", order: newOrder });
+    applyPayment(order, paymentStatus, customerName);
+    await order.save();
+
+    await occupyTable(table._id, order._id);
+
+    return res.status(201).json({ message: "Order created", order });
   } catch (err) {
-    console.error("[CREATE ORDER ERROR]", err);
-    res.status(500).json({ error: "Failed to create order" });
+    console.error("[ORDER create]", err);
+    if (err?.name === "ValidationError" || err?.name === "CastError") {
+      return res.status(400).json({ error: err.message });
+    }
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
-export const getAllOrders = async (req, res) => {
+export const getOrders = async (req, res) => {
   try {
-    const orders = await Order.find({ adminId: req.user.adminId }).sort({
-      createdAt: -1,
-    });
-    res.status(200).json(orders);
+    const restaurantId = ensureRestaurant(req, res);
+    if (!restaurantId) return;
+
+    const orders = await Order.find({ restaurant: restaurantId })
+      .populate("table", "name")
+      .populate("area", "name")
+      .populate("items.item", "name")
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({ orders });
   } catch (err) {
-    console.error("[GET ALL ORDERS ERROR]", err);
-    res.status(500).json({ error: "Failed to fetch orders" });
+    console.error("[ORDER list]", err);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
 export const getOrderById = async (req, res) => {
   try {
-    const order = await Order.findOne({
-      _id: req.params.id,
-      adminId: req.user.adminId,
-    });
-    if (!order) return res.status(404).json({ error: "Order not found" });
-    res.status(200).json(order);
-  } catch (err) {
-    console.error("[GET ORDER ERROR]", err);
-    res.status(500).json({ error: "Failed to fetch order" });
-  }
-};
+    const restaurantId = ensureRestaurant(req, res);
+    if (!restaurantId) return;
 
-export const getOrderByOrderId = async (req, res) => {
-  try {
-    const order = await Order.findOne({
-      orderId: Number(req.params.orderId),
-      adminId: req.user.adminId,
-    });
+    const { id } = req.params;
+    const order = await Order.findOne({ _id: id, restaurant: restaurantId })
+      .populate("table", "name")
+      .populate("area", "name")
+      .populate("items.item", "name");
+
     if (!order) return res.status(404).json({ error: "Order not found" });
-    res.status(200).json(order);
+
+    res.status(200).json({ order });
   } catch (err) {
-    console.error("[GET ORDER BY ORDERID ERROR]", err);
-    res.status(500).json({ error: "Failed to fetch order" });
+    console.error("[ORDER getById]", err);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
 export const updateOrder = async (req, res) => {
   try {
-    const updatedOrder = await Order.findOneAndUpdate(
-      { _id: req.params.id, adminId: req.user.adminId },
-      req.body,
-      { new: true, runValidators: true }
-    );
-    if (!updatedOrder)
-      return res.status(404).json({ error: "Order not found" });
+    const restaurantId = ensureRestaurant(req, res);
+    if (!restaurantId) return;
 
-    res
-      .status(200)
-      .json({ message: "Order updated successfully", order: updatedOrder });
+    const { id } = req.params;
+    const { items, paymentStatus, customerName, note } = req.body ?? {};
+
+    const order = await Order.findOne({
+      _id: id,
+      restaurant: restaurantId,
+    }).populate("table");
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    if (items && Array.isArray(items)) {
+      if (!validateItems(items, res)) return;
+      order.items = items;
+      order.totalAmount = computeTotals(items).totalAmount;
+      applyPayment(order, order.paymentStatus, order.customerName);
+    }
+
+    if (paymentStatus) {
+      applyPayment(order, paymentStatus, customerName);
+    }
+
+    if (note !== undefined) order.note = note;
+
+    await order.save();
+
+    res.status(200).json({ message: "Order updated", order });
   } catch (err) {
-    console.error("[UPDATE ORDER ERROR]", err);
-    res.status(500).json({ error: "Failed to update order" });
+    console.error("[ORDER update]", err);
+    if (err?.name === "ValidationError" || err?.name === "CastError") {
+      return res.status(400).json({ error: err.message });
+    }
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
 export const deleteOrder = async (req, res) => {
   try {
-    const deletedOrder = await Order.findOneAndDelete({
-      _id: req.params.id,
-      adminId: req.user.adminId,
-    });
-    if (!deletedOrder)
-      return res.status(404).json({ error: "Order not found" });
+    const restaurantId = ensureRestaurant(req, res);
+    if (!restaurantId) return;
 
-    res.status(200).json({ message: "Order deleted successfully" });
+    const { id } = req.params;
+    const deleted = await Order.findOneAndDelete({
+      _id: id,
+      restaurant: restaurantId,
+    });
+    if (!deleted) return res.status(404).json({ error: "Order not found" });
+
+    await Table.findByIdAndUpdate(deleted.table, {
+      $set: { status: "available", currentOrderId: null },
+    });
+
+    res.status(200).json({ message: "Order deleted" });
   } catch (err) {
-    console.error("[DELETE ORDER ERROR]", err);
-    res.status(500).json({ error: "Failed to delete order" });
+    console.error("[ORDER delete]", err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+export const checkoutOrder = async (req, res) => {
+  try {
+    const restaurantId = ensureRestaurant(req, res);
+    if (!restaurantId) return;
+
+    const { id } = req.params;
+    const { force = false } = req.body ?? {};
+
+    const order = await Order.findOne({
+      _id: id,
+      restaurant: restaurantId,
+    }).populate("table");
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    const hasDue =
+      Number(order.dueAmount ?? 0) > 0 || order.paymentStatus !== "Paid";
+    if (hasDue && !force) {
+      return res
+        .status(400)
+        .json({ error: "Order has due amount. Set force=true to override." });
+    }
+
+    order.checkedOut = true;
+    order.checkedOutAt = new Date();
+
+    if (hasDue && force) {
+      order.paidAmount = order.totalAmount;
+      order.dueAmount = 0;
+      order.paymentStatus = "Paid";
+      order.customerName = null;
+    }
+
+    await order.save();
+
+    await freeTable(order.table);
+
+    return res.status(200).json({ message: "Checked out", order });
+  } catch (err) {
+    console.error("[ORDER checkout]", err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+export const bulkCheckout = async (req, res) => {
+  try {
+    const restaurantId = ensureRestaurant(req, res);
+    if (!restaurantId) return;
+
+    const { ids, force = false } = req.body || {};
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: "ids (string[]) is required" });
+    }
+
+    const bad = ids.filter((id) => !mongoose.Types.ObjectId.isValid(id));
+    if (bad.length) {
+      return res.status(400).json({ error: `Invalid ids: ${bad.join(", ")}` });
+    }
+
+    let ok = 0;
+    let failed = 0;
+    const results = [];
+
+    for (const id of ids) {
+      try {
+        const order = await Order.findOne({
+          _id: id,
+          restaurant: restaurantId,
+        }).populate("table");
+
+        if (!order) {
+          failed++;
+          results.push({ id, ok: false, reason: "Order not found" });
+          continue;
+        }
+
+        if (order.checkedOut === true) {
+          ok++;
+          results.push({ id, ok: true, reason: "Already checked out" });
+          continue;
+        }
+
+        const hasDue =
+          Number(order.dueAmount ?? 0) > 0 || order.paymentStatus !== "Paid";
+        if (hasDue && !force) {
+          failed++;
+          results.push({
+            id,
+            ok: false,
+            reason: "Has due; require force=true",
+          });
+          continue;
+        }
+
+        order.checkedOut = true;
+        order.checkedOutAt = new Date();
+        if (hasDue && force) {
+          order.paidAmount = order.totalAmount;
+          order.dueAmount = 0;
+          order.paymentStatus = "Paid";
+          order.customerName = null;
+        }
+        await order.save();
+
+        await freeTable(order.table);
+
+        ok++;
+        results.push({ id, ok: true });
+      } catch (e) {
+        failed++;
+        results.push({ id, ok: false, reason: e?.message || "Error" });
+      }
+    }
+
+    return res
+      .status(200)
+      .json({
+        ok,
+        failed,
+        results,
+        message: `Checked out ${ok} • Failed ${failed}`,
+      });
+  } catch (err) {
+    console.error("[ORDER bulkCheckout]", err);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };

@@ -5,16 +5,19 @@ export const authMiddleware = (roles = []) => {
     try {
       const authHeader = req.headers.authorization;
       if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        console.warn("[AUTH] No valid authorization header");
         return res
           .status(401)
           .json({ error: "Authorization header missing or invalid" });
       }
 
       const token = authHeader.split(" ")[1];
+
       let decoded;
       try {
         decoded = jwt.verify(token, process.env.JWT_SECRET);
       } catch (err) {
+        console.error("[AUTH] Token verification error:", err);
         if (err.name === "TokenExpiredError") {
           return res
             .status(401)
@@ -24,13 +27,16 @@ export const authMiddleware = (roles = []) => {
       }
 
       req.user = {
+        userId: decoded.userId ?? null,
         role: decoded.role ?? null,
-        adminId: decoded.adminId ?? null,
-        managerId: decoded.managerId ?? null,
-        staffId: decoded.staffId ?? null,
+        restaurantId: decoded.restaurantId ?? null,
+        // adminId: decoded.adminId ?? null,
+        // managerId: decoded.managerId ?? null,
+        // staffId: decoded.staffId ?? null,
       };
 
       if (roles.length && !roles.includes(req.user.role)) {
+        console.warn("[AUTH] Access denied. Roles allowed:", roles);
         return res.status(403).json({ error: "Access denied" });
       }
 

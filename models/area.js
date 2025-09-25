@@ -3,18 +3,16 @@ import mongoose from "mongoose";
 const areaSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
-    description: { type: String },
+    description: { type: String, default: "" },
     image: { type: String },
-    createdBy: {
+    restaurant: {
       type: mongoose.Schema.Types.ObjectId,
+      ref: "Restaurant",
       required: true,
-      ref: "Admin",
+      index: true,
     },
-    createdByModel: {
-      type: String,
-      enum: ["Admin", "Manager"],
-      required: true,
-    },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    createdByRole: { type: String },
   },
   { timestamps: true }
 );

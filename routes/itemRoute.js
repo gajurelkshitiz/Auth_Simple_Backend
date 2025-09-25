@@ -1,6 +1,4 @@
 import express from "express";
-import { authMiddleware } from "../middleware/authMiddleware.js";
-import { upload } from "../middleware/upload.js";
 import {
   createItem,
   getItems,
@@ -8,8 +6,13 @@ import {
   updateItem,
   deleteItem,
 } from "../controllers/itemController.js";
+import { authMiddleware } from "../middleware/authMiddleware.js";
+import { upload } from "../middleware/uploads.js";
 
 const router = express.Router();
+
+router.get("/", authMiddleware(["admin", "manager", "staff"]), getItems);
+router.get("/:id", authMiddleware(["admin", "manager", "staff"]), getItemById);
 
 router.post(
   "/",
@@ -17,8 +20,6 @@ router.post(
   upload.single("image"),
   createItem
 );
-router.get("/", authMiddleware(["admin", "manager"]), getItems);
-router.get("/:id", authMiddleware(["admin", "manager"]), getItemById);
 router.put(
   "/:id",
   authMiddleware(["admin", "manager"]),

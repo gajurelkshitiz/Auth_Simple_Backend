@@ -1,24 +1,34 @@
 import mongoose from "mongoose";
 
-const OrderItemSchema = new mongoose.Schema({
-  itemName: { type: String, required: true },
-  unitName: { type: String, required: true },
-  price: { type: Number, required: true },
-  quantity: { type: Number, required: true },
-  imagePath: { type: String },
-});
-
-const OrderSchema = new mongoose.Schema(
+const orderItemSchema = new mongoose.Schema(
   {
-    adminId: {
+    item: { type: mongoose.Schema.Types.ObjectId, ref: "Item", required: true },
+    unitName: { type: String, required: true },
+    price: { type: Number, required: true },
+    quantity: { type: Number, required: true, min: 1 },
+  },
+  { _id: false }
+);
+
+const orderSchema = new mongoose.Schema(
+  {
+    orderId: { type: Number, required: true },
+
+    table: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Admin",
+      ref: "Table",
       required: true,
     },
-    orderId: { type: Number, required: true },
-    tableName: { type: String, required: true },
-    area: { type: String, default: "" },
-    items: [OrderItemSchema],
+    area: { type: mongoose.Schema.Types.ObjectId, ref: "Area", required: true },
+
+    restaurant: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Restaurant",
+      required: true,
+      index: true,
+    },
+
+    items: { type: [orderItemSchema], required: true },
     totalAmount: { type: Number, required: true },
     paidAmount: { type: Number, default: 0 },
     dueAmount: { type: Number, default: 0 },
@@ -29,21 +39,12 @@ const OrderSchema = new mongoose.Schema(
     },
     customerName: { type: String },
     note: { type: String },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    checkedOut: { type: Boolean, default: false, index: true },
   },
   { timestamps: true }
 );
 
-OrderSchema.index({ adminId: 1, orderId: 1 }, { unique: true });
+orderSchema.index({ restaurant: 1, orderId: 1 }, { unique: true });
 
-OrderSchema.pre("validate", function (next) {
-  if (this.items && this.items.length > 0) {
-    this.totalAmount = this.items.reduce(
-      (sum, item) => sum + item.price * item.quantity,
-      0
-    );
-    this.dueAmount = Math.max(this.totalAmount - (this.paidAmount || 0), 0);
-  }
-  next();
-});
-
-export default mongoose.model("Order", OrderSchema);
+export default mongoose.model("Order", orderSchema);

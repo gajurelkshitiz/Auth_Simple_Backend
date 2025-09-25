@@ -1,6 +1,4 @@
 import express from "express";
-import { authMiddleware } from "../middleware/authMiddleware.js";
-import { upload } from "../middleware/upload.js";
 import {
   createArea,
   getAreas,
@@ -8,8 +6,13 @@ import {
   updateArea,
   deleteArea,
 } from "../controllers/areaController.js";
+import { authMiddleware } from "../middleware/authMiddleware.js";
+import { upload } from "../middleware/uploads.js";
 
 const router = express.Router();
+
+router.get("/", authMiddleware(["admin", "manager", "staff"]), getAreas);
+router.get("/:id", authMiddleware(["admin", "manager", "staff"]), getAreaById);
 
 router.post(
   "/",
@@ -17,8 +20,6 @@ router.post(
   upload.single("image"),
   createArea
 );
-router.get("/", authMiddleware(["admin", "manager"]), getAreas);
-router.get("/:id", authMiddleware(["admin", "manager"]), getAreaById);
 router.put(
   "/:id",
   authMiddleware(["admin", "manager"]),
