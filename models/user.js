@@ -13,8 +13,8 @@ const userSchema = new mongoose.Schema({
       "Email Not Valid",
     ],
     unique: true,
-    lowercase: true,
-    trim: true,
+    // lowercase: true,
+    // trim: true,
   },
   password: {
     type: String,

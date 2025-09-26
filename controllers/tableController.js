@@ -58,7 +58,7 @@ export const createTable = async (req, res) => {
 
     let imagePath = null;
     if (req.file) {
-      imagePath = `/uploads/tables/${req.file.filename}`;
+      imagePath = `/uploads/${req.file.filename}`;
     }
 
     const table = await Table.create({
@@ -168,13 +168,13 @@ export const updateTable = async (req, res) => {
     if (capacity !== undefined) updates.capacity = Number(capacity);
     if (areaId !== undefined) updates.area = areaId;
 
-    let newImagePath = null;
+    // let newImagePath = null;
     if (req.file) {
-      newImagePath = `/uploads/tables/${req.file.filename}`;
-      deleteFileIfExists(table.image);
-      updates.image = newImagePath;
+      const newPath = `/uploads/${req.file.filename}`;
+      if (table.image) deleteFileIfExists(table.image);
+      updates.image = newPath;
     } else if (removeImage === "true" || removeImage === true) {
-      deleteFileIfExists(table.image);
+      if (table.image) deleteFileIfExists(table.image);
       updates.image = null;
     }
 
