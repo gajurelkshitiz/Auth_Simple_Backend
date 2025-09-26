@@ -27,7 +27,6 @@ dotenv.config();
       console.log("Roles already exist in the database.");
     }
 
-    // create a super admin user
     await User.create({
       name: process.env.SUPER_ADMIN_NAME,
       email: process.env.SUPER_ADMIN_EMAIL,

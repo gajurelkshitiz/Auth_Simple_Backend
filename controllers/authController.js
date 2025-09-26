@@ -10,6 +10,7 @@ export const login = async (req, res) => {
     if (!email || !password) {
       return res.status(400).json({ error: "Email and Password are required" });
     }
+
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(401).json({ error: "Invalid Email or Password" });
@@ -23,6 +24,16 @@ export const login = async (req, res) => {
     const populatedUser = await User.findById(user._id)
       .populate("restaurant", "name address")
       .populate("role", "name");
+
+    if (
+      populatedUser.role?.name !== "super-admin" &&
+      !populatedUser.restaurant
+    ) {
+      return res.status(400).json({
+        error:
+          "User is not assigned to any restaurant. Ask a super-admin to attach a restaurant.",
+      });
+    }
 
     const token = jwt.sign(
       {
