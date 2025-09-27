@@ -15,7 +15,7 @@ const router = express.Router();
 router.get("/", authMiddleware(["admin", "manager", "staff"]), getOrders);
 router.get("/:id", authMiddleware(["admin", "manager", "staff"]), getOrderById);
 router.post("/", authMiddleware(["admin", "manager", "staff"]), createOrder);
-router.put("/:id", authMiddleware(["admin", "manager"]), updateOrder);
+router.put("/:id", authMiddleware(["admin", "manager", "staff"]), updateOrder);
 router.patch(
   "/:id/checkout",
   authMiddleware(["admin", "manager", "staff"]),

@@ -129,7 +129,9 @@ export const updateArea = async (req, res) => {
       newImagePath = undefined;
     }
 
-    existing.name = (name ?? existing.name).trim();
+    const nextName =
+      name !== undefined ? name?.toString().trim() : existing.name;
+    existing.name = nextName;
     existing.description = description ?? existing.description;
     existing.image = newImagePath;
 

@@ -11,9 +11,9 @@ import { authMiddleware } from "../middleware/authMiddleware.js";
 const router = express.Router();
 
 router.post("/", authMiddleware(["super-admin"]), createRestaurant);
-router.get("/", authMiddleware(["super-admin"]), getRestaurants);
-router.get("/:id", authMiddleware(["super-admin"]), getRestaurantById);
-router.put("/:id", authMiddleware(["super-admin"]), updateRestaurant);
+router.get("/", authMiddleware(["super-admin", "admin"]), getRestaurants);
+router.get("/:id", authMiddleware(["super-admin", "admin"]), getRestaurantById);
+router.put("/:id", authMiddleware(["super-admin", "admin"]), updateRestaurant);
 router.delete("/:id", authMiddleware(["super-admin"]), deleteRestaurant);
 
 export default router;

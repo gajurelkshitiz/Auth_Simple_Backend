@@ -19,12 +19,25 @@ export const login = async (req, res) => {
     }
 
     const user = await User.findOne({ email }).select(
-      "+password _id role restaurant"
+      "password _id role restaurant"
     );
+
+  
 
     if (!user) {
       return res.status(401).json({ error: "Invalid Email or Password" });
     }
+
+    console.log(
+      "[LOGIN] user doc:",
+      user && {
+        _id: user._id,
+        hasPassword: typeof user.password === "string",
+        role: user.role,
+        restaurant: user.restaurant,
+       
+      }
+    );
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {

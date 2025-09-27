@@ -3,82 +3,76 @@ import User from "../models/user.js";
 import bcrypt from "bcryptjs";
 import Restaurant from "../models/restaurant.js";
 
-async function requireRoleByName(name, res) {
-  const role = await Role.findOne({ name });
-  if (!role) {
-    res.status(400).json({ error: `Role '${name}' not found` });
-    throw new Error("abort");
-  }
-  return role;
-}
+const R = {
+  SUPER: "super-admin",
+  ADMIN: "admin",
+  MANAGER: "manager",
+  STAFF: "staff",
+};
 
 export const createUser = async (req, res) => {
   try {
-    const { name, password, role, restaurantId: bodyRestaurantId } = req.body;
-    const email = (req.body.email || "").trim().toLowerCase();
+    const {
+      name,
+      password,
+      role,
+      restaurantId: bodyRestaurantId,
+    } = req.body ?? {};
+    const email = (req.body?.email || "").trim().toLowerCase();
 
     if (!name || !email || !password || !role) {
       return res.status(400).json({ error: "All fields are required." });
     }
 
-    const roleCheck = await Role.findOne({ name: role });
-    if (!roleCheck) {
+    const roleDoc = await Role.findOne({ name: role });
+    if (!roleDoc) {
       return res.status(400).json({ error: "Invalid role specified." });
     }
 
-    if (req.user?.role !== "super-admin" && role === "admin") {
-      return res
-        .status(403)
-        .json({ error: "Only super-admin can create admin users." });
-    }
-    if (
-      req.user?.role !== "admin" &&
-      (role === "staff" || role === "manager")
-    ) {
-      return res
-        .status(403)
-        .json({ error: "Only admin can create staff or manager users." });
+    const caller = req.user?.role;
+
+    // Authorization per your plan:
+    // super-admin -> can create any; MUST provide restaurantId for non-super-admins
+    // admin -> can create manager/staff (in their own restaurant)
+    // manager -> can create staff (in their own restaurant)
+    if (caller === R.SUPER) {
+      if (role !== R.SUPER && !bodyRestaurantId) {
+        return res.status(400).json({
+          error:
+            "restaurantId is required when super-admin creates non–super-admin user.",
+        });
+      }
+    } else if (caller === R.ADMIN) {
+      if (![R.MANAGER, R.STAFF].includes(role)) {
+        return res
+          .status(403)
+          .json({ error: "Admins can only create manager or staff." });
+      }
+    } else if (caller === R.MANAGER) {
+      if (role !== R.STAFF) {
+        return res
+          .status(403)
+          .json({ error: "Managers can only create staff." });
+      }
+    } else {
+      return res.status(403).json({ error: "Access denied." });
     }
 
     let restaurantId = null;
-
-    if (role === "admin" && req.user?.role === "super-admin") {
-      if (!bodyRestaurantId) {
-        return res
-          .status(400)
-          .json({ error: "restaurantId is required when creating an admin." });
-      }
-      const restaurant = await Restaurant.findById(bodyRestaurantId);
-      if (!restaurant) {
-        return res.status(400).json({ error: "Invalid restaurant ID." });
-      }
-      restaurantId = restaurant._id;
-    } else if (req.user?.role === "admin") {
-      if (!req.user.restaurantId) {
-        return res
-          .status(400)
-          .json({ error: "Admin has no restaurant assigned." });
-      }
-      const restaurant = await Restaurant.findById(req.user.restaurantId);
-      if (!restaurant) {
-        return res.status(400).json({ error: "Invalid restaurant ID." });
-      }
-      restaurantId = restaurant._id;
-    } else if (
-      req.user?.role === "super-admin" &&
-      (role === "manager" || role === "staff")
-    ) {
-      if (bodyRestaurantId) {
-        const restaurant = await Restaurant.findById(bodyRestaurantId);
-        if (!restaurant) {
+    if (caller === R.SUPER) {
+      restaurantId = role === R.SUPER ? null : bodyRestaurantId;
+      if (restaurantId) {
+        const r = await Restaurant.findById(restaurantId);
+        if (!r)
           return res.status(400).json({ error: "Invalid restaurant ID." });
-        }
-        restaurantId = restaurant._id;
-      } else {
+      }
+    } else {
+      const r = await Restaurant.findById(req.user.restaurantId);
+      if (!r)
         return res
           .status(400)
-          .json({ error: "restaurantId is required for manager/staff." });
-      }
+          .json({ error: "Invalid caller restaurant context." });
+      restaurantId = r._id;
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -87,7 +81,7 @@ export const createUser = async (req, res) => {
       name,
       email,
       password: hashedPassword,
-      role: roleCheck._id,
+      role: roleDoc._id,
       restaurant: restaurantId,
     });
 
@@ -95,66 +89,75 @@ export const createUser = async (req, res) => {
       .populate("role", "name")
       .populate("restaurant", "name address");
 
-    res
+    return res
       .status(201)
       .json({ message: "User created successfully", user: populatedUser });
   } catch (err) {
-    if (err?.message === "abort") return;
-    console.error(err);
-    if (err && err.code === 11000) {
+    console.error("[CREATE USER ERROR]", err);
+    if (err?.code === 11000) {
       return res.status(400).json({ error: "Email already exists" });
     }
-    res.status(500).json({ error: "Internal Server Error" });
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
 export const findUsers = async (req, res) => {
   try {
-    let role;
-    if (req.user.role === "manager") {
-      role = await Role.findOne({ name: "staff" }).select("_id");
+    let roleFilter = {};
+    if (req.user.role === R.MANAGER) {
+      const staffRole = await Role.findOne({ name: R.STAFF }).select("_id");
+      roleFilter = staffRole ? { role: staffRole._id } : { _id: null };
     }
     const users = await User.find({
       restaurant: req.user.restaurantId,
-      ...(role ? { role: role._id } : {}),
+      ...roleFilter,
     })
       .populate("role", "name")
       .populate("restaurant", "name address");
-    res.status(200).json({ users });
+    return res.status(200).json({ users });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Internal Server Error" });
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
 export const getUserById = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id)
+    const isSuper = req.user?.role === R.SUPER;
+    const query = isSuper
+      ? { _id: req.params.id }
+      : { _id: req.params.id, restaurant: req.user.restaurantId };
+
+    const user = await User.findOne(query)
       .populate("role", "name")
       .populate("restaurant", "name address");
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
-    res.status(200).json({ user });
+
+    if (!user) return res.status(404).json({ error: "User not found" });
+    return res.status(200).json({ user });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal Server Error" });
+    console.error("[GET USER ERROR]", err);
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
 export const assignRestaurant = async (req, res) => {
   try {
-    if (req.user?.role !== "super-admin") {
+    if (req.user?.role !== R.SUPER) {
       return res
         .status(403)
         .json({ error: "Only super-admin can reassign restaurants." });
     }
-    const { userId, restaurantId } = req.body;
+    const { userId, restaurantId } = req.body ?? {};
     if (!userId || !restaurantId) {
       return res
         .status(400)
         .json({ error: "userId and restaurantId are required." });
     }
+    const okId = (id) => /^[a-f\d]{24}$/i.test(id);
+    if (!okId(userId) || !okId(restaurantId)) {
+      return res.status(400).json({ error: "Invalid IDs" });
+    }
+
     const restaurant = await Restaurant.findById(restaurantId);
     if (!restaurant)
       return res.status(400).json({ error: "Invalid restaurant ID." });
@@ -171,6 +174,6 @@ export const assignRestaurant = async (req, res) => {
     return res.status(200).json({ message: "Restaurant assigned", user });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Internal Server Error" });
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 };

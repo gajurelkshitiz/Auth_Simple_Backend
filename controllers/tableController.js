@@ -39,10 +39,17 @@ export const createTable = async (req, res) => {
     if (!restaurantId) return;
 
     const { name, capacity, areaId } = req.body;
+    const capNum = Number(capacity);
+
     if (!name || !capacity || !areaId) {
       return res
         .status(400)
         .json({ error: "Name, capacity, and areaId are required" });
+    }
+    if (!Number.isInteger(capNum) || capNum < 1) {
+      return res
+        .status(400)
+        .json({ error: "capacity must be an integer >= 1" });
     }
 
     if (!mongoose.Types.ObjectId.isValid(areaId)) {
@@ -62,8 +69,8 @@ export const createTable = async (req, res) => {
     }
 
     const table = await Table.create({
-      name: name.trim(),
-      capacity: Number(capacity),
+      name: name?.toString().trim(),
+      capacity: capNum,
       area: areaId,
       restaurant: restaurantId,
       image: imagePath,
@@ -85,6 +92,9 @@ export const getTables = async (req, res) => {
 
     const filter = { restaurant: restaurantId };
     if (req.query.areaId) {
+      if (!mongoose.Types.ObjectId.isValid(req.query.areaId)) {
+        return res.status(400).json({ error: "Invalid areaId format" });
+      }
       filter.area = req.query.areaId;
     }
 
@@ -164,11 +174,18 @@ export const updateTable = async (req, res) => {
     if (!table) return res.status(404).json({ error: "Table not found" });
 
     const updates = {};
-    if (name !== undefined) updates.name = name;
-    if (capacity !== undefined) updates.capacity = Number(capacity);
+    if (name !== undefined) updates.name = name?.toString();
+    if (capacity !== undefined) {
+      const capNum2 = Number(capacity);
+      if (!Number.isInteger(capNum2) || capNum2 < 1) {
+        return res
+          .status(400)
+          .json({ error: "capacity must be an integer >= 1" });
+      }
+      updates.capacity = capNum2;
+    }
     if (areaId !== undefined) updates.area = areaId;
 
-    // let newImagePath = null;
     if (req.file) {
       const newPath = `/uploads/${req.file.filename}`;
       if (table.image) deleteFileIfExists(table.image);
