@@ -75,7 +75,7 @@ io.on("connection", (socket) => {
 const start = async () => {
   try {
     await connectDB(process.env.MONGO_URI);
-    app.listen(port, "0.0.0.0", () =>
+    server.listen(port, "0.0.0.0", () =>
       console.log(`Server is running at ${port}`)
     );
   } catch (err) {
