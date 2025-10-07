@@ -31,10 +31,6 @@ export const createUser = async (req, res) => {
 
     const caller = req.user?.role;
 
-    // Authorization per your plan:
-    // super-admin -> can create any; MUST provide restaurantId for non-super-admins
-    // admin -> can create manager/staff (in their own restaurant)
-    // manager -> can create staff (in their own restaurant)
     if (caller === R.SUPER) {
       if (role !== R.SUPER && !bodyRestaurantId) {
         return res.status(400).json({

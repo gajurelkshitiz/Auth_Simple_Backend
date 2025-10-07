@@ -3,6 +3,9 @@ import Order from "../models/order.js";
 import Table from "../models/table.js";
 import Area from "../models/area.js";
 import OrderCounter from "../models/orderCounter.js";
+import KOT from "../models/kot.js";
+import { printKOT } from "../utils/printKOT.js";
+import { io } from "../index.js";
 
 const ensureRestaurant = (req, res) => {
   const restaurantId = req.user?.restaurantId;
@@ -134,7 +137,6 @@ export const createOrder = async (req, res) => {
     }
 
     const orderId = await nextOrderIdForRestaurant(restaurantId);
-
     const { totalAmount } = computeTotals(items);
 
     const order = await Order.create({
@@ -155,8 +157,37 @@ export const createOrder = async (req, res) => {
 
     applyPayment(order, paymentStatus, customerName);
     await order.save();
-
     await occupyTable(table._id, order._id);
+
+    const kot = await KOT.create({
+      restaurant: restaurantId,
+      table: table._id,
+      order: order._id,
+      type: "NEW",
+      items: order.items.map((it) => ({
+        item: it.item,
+        name: it.item?.name || undefined,
+        unitName: it.unitName,
+        quantity: it.quantity,
+      })),
+      createdBy: req.user.userId,
+      createdByRole: req.user.role,
+    });
+
+    try {
+      printKOT(await kot.populate(["table", "order"]));
+
+      io.to(restaurantId.toString()).emit("kot:new", {
+        type: "NEW",
+        table: table.name,
+        tableId: table._id,
+        orderId: order._id,
+        items: order.items,
+        createdAt: new Date(),
+      });
+    } catch (err) {
+      console.warn("[KOT print error]", err.message);
+    }
 
     return res.status(201).json({ message: "Order created", order });
   } catch (err) {
@@ -235,6 +266,36 @@ export const updateOrder = async (req, res) => {
 
     await order.save();
 
+    const kot = await KOT.create({
+      restaurant: restaurantId,
+      table: order.table,
+      order: order._id,
+      type: "UPDATE",
+      items: order.items.map((it) => ({
+        item: it.item,
+        name: it.item?.name || undefined,
+        unitName: it.unitName,
+        quantity: it.quantity,
+      })),
+      createdBy: req.user.userId,
+      createdByRole: req.user.role,
+    });
+
+    try {
+      printKOT(await kot.populate(["table", "order"]));
+
+      io.to(restaurantId.toString()).emit("kot:update", {
+        type: "UPDATE",
+        table: order.table.name,
+        tableId: order.table._id,
+        orderId: order._id,
+        items: order.items,
+        updatedAt: new Date(),
+      });
+    } catch (err) {
+      console.warn("[KOT print error]", err.message);
+    }
+
     res.status(200).json({ message: "Order updated", order });
   } catch (err) {
     console.error("[ORDER update]", err);
@@ -260,6 +321,35 @@ export const deleteOrder = async (req, res) => {
     await Table.findByIdAndUpdate(deleted.table, {
       $set: { status: "available", currentOrderId: null },
     });
+
+    const kot = await KOT.create({
+      restaurant: restaurantId,
+      table: deleted.table,
+      order: deleted._id,
+      type: "VOID",
+      items: deleted.items.map((it) => ({
+        item: it.item,
+        name: it.item?.name || undefined,
+        unitName: it.unitName,
+        quantity: it.quantity,
+      })),
+      createdBy: req.user.userId,
+      createdByRole: req.user.role,
+    });
+
+    try {
+      printKOT(await kot.populate(["table", "order"]));
+
+      io.to(restaurantId.toString()).emit("kot:void", {
+        type: "VOID",
+        tableId: deleted.table,
+        orderId: deleted._id,
+        items: deleted.items,
+        deletedAt: new Date(),
+      });
+    } catch (err) {
+      console.warn("[KOT print error]", err.message);
+    }
 
     res.status(200).json({ message: "Order deleted" });
   } catch (err) {
@@ -301,7 +391,6 @@ export const checkoutOrder = async (req, res) => {
     }
 
     await order.save();
-
     await freeTable(order.table);
 
     return res.status(200).json({ message: "Checked out", order });
@@ -381,14 +470,12 @@ export const bulkCheckout = async (req, res) => {
       }
     }
 
-    return res
-      .status(200)
-      .json({
-        ok,
-        failed,
-        results,
-        message: `Checked out ${ok} • Failed ${failed}`,
-      });
+    return res.status(200).json({
+      ok,
+      failed,
+      results,
+      message: `Checked out ${ok} • Failed ${failed}`,
+    });
   } catch (err) {
     console.error("[ORDER bulkCheckout]", err);
     res.status(500).json({ error: "Internal Server Error" });
