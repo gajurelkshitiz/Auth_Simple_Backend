@@ -6,6 +6,7 @@ import OrderCounter from "../models/orderCounter.js";
 import KOT from "../models/kot.js";
 import { printKOT } from "../utils/printKOT.js";
 import { io } from "../index.js";
+import item from "../models/item.js";
 
 const ensureRestaurant = (req, res) => {
   const restaurantId = req.user?.restaurantId;
@@ -159,6 +160,14 @@ export const createOrder = async (req, res) => {
     await order.save();
     await occupyTable(table._id, order._id);
 
+    io.to(restaurantId.toString()).emit("order:created", {
+      orderId: order._id,
+      tableId: table._id,
+      totalAmount: order.totalAmount,
+      status: "active",
+      createdAt: new Date(),
+    });
+
     const kot = await KOT.create({
       restaurant: restaurantId,
       table: table._id,
@@ -266,6 +275,14 @@ export const updateOrder = async (req, res) => {
 
     await order.save();
 
+    io.to(restaurantId.toString()).emit("order:updated", {
+      orderId: order._id,
+      tableId: order.table._id,
+      totalAmount: order.totalAmount,
+      items: order.items,
+      updatedAt: new Date(),
+    });
+
     const kot = await KOT.create({
       restaurant: restaurantId,
       table: order.table,
@@ -320,6 +337,12 @@ export const deleteOrder = async (req, res) => {
 
     await Table.findByIdAndUpdate(deleted.table, {
       $set: { status: "available", currentOrderId: null },
+    });
+
+    io.to(restaurantId.toString()).emit("order:deleted", {
+      orderId: deleted._id,
+      tableId: deleted.table,
+      deletedAt: new Date(),
     });
 
     const kot = await KOT.create({
@@ -393,6 +416,12 @@ export const checkoutOrder = async (req, res) => {
     await order.save();
     await freeTable(order.table);
 
+    io.to(restaurantId.toString()).emit("order:checkedOut", {
+      orderId: order._id,
+      tableId: order.table._id,
+      checkedOutAt: new Date(),
+    });
+
     return res.status(200).json({ message: "Checked out", order });
   } catch (err) {
     console.error("[ORDER checkout]", err);
@@ -464,6 +493,12 @@ export const bulkCheckout = async (req, res) => {
 
         ok++;
         results.push({ id, ok: true });
+
+        io.to(restaurantId.toString()).emit("order:checkedOut", {
+          orderId: order._id,
+          tableId: order.table._id,
+          checkedOutAt: new Date(),
+        });
       } catch (e) {
         failed++;
         results.push({ id, ok: false, reason: e?.message || "Error" });
