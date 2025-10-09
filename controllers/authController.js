@@ -22,8 +22,6 @@ export const login = async (req, res) => {
       "password _id role restaurant"
     );
 
-  
-
     if (!user) {
       return res.status(401).json({ error: "Invalid Email or Password" });
     }
@@ -35,7 +33,6 @@ export const login = async (req, res) => {
         hasPassword: typeof user.password === "string",
         role: user.role,
         restaurant: user.restaurant,
-       
       }
     );
 
@@ -81,6 +78,9 @@ export const login = async (req, res) => {
       token,
       message: "Login successful",
       role: populatedUser.role.name,
+      restaurantId: populatedUser.restaurant
+        ? populatedUser.restaurant._id.toString()
+        : null,
     });
   } catch (err) {
     console.error("[LOGIN ERROR]", err);
