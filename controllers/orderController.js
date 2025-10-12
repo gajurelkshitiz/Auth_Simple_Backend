@@ -6,7 +6,8 @@ import OrderCounter from "../models/orderCounter.js";
 import KOT from "../models/kot.js";
 import { printKOT } from "../utils/printKOT.js";
 import { io } from "../index.js";
-import item from "../models/item.js";
+import Item from "../models/item.js";
+import Stock from "../models/stock.js";
 
 const ensureRestaurant = (req, res) => {
   const restaurantId = req.user?.restaurantId;
@@ -105,6 +106,52 @@ function validateItems(items, res) {
   return true;
 }
 
+async function adjustStock(items, increase = false, restaurantId) {
+  if (!Array.isArray(items) || items.length === 0) return;
+
+  const populatedItems = await Promise.all(
+    items.map(async (it) => {
+      if (it.item && typeof it.item === "object" && it.item._id) return it;
+      const fullItem = await Item.findById(it.item).select("name");
+      return { ...it, item: fullItem };
+    })
+  );
+
+  for (const it of populatedItems) {
+    if (!it.item?._id) continue;
+
+    const stockDoc = await Stock.findOne({
+      item: it.item._id,
+      restaurant: restaurantId,
+    });
+
+    if (!stockDoc) continue; // no stock tracking for this item
+
+    if (stockDoc.autoDecrement) {
+      const oldQty = stockDoc.quantity;
+      stockDoc.quantity = increase
+        ? stockDoc.quantity + it.quantity
+        : stockDoc.quantity - it.quantity;
+
+      if (stockDoc.quantity < 0) stockDoc.quantity = 0;
+
+      await stockDoc.save();
+
+      console.log(
+        `[STOCK] ${stockDoc.name} ${
+          increase ? "restocked" : "decremented"
+        }: ${oldQty} → ${stockDoc.quantity}`
+      );
+
+      if (stockDoc.quantity <= stockDoc.alertThreshold) {
+        console.warn(
+          `[ALERT] Low stock: ${stockDoc.name} (${stockDoc.quantity} ${stockDoc.unit} left)`
+        );
+      }
+    }
+  }
+}
+
 export const createOrder = async (req, res) => {
   try {
     const restaurantId = ensureRestaurant(req, res);
@@ -154,11 +201,14 @@ export const createOrder = async (req, res) => {
       note,
       checkedOut: false,
       createdBy: req.user.userId,
+      adminId: req.user.userId,
     });
 
     applyPayment(order, paymentStatus, customerName);
     await order.save();
     await occupyTable(table._id, order._id);
+
+    await adjustStock(items, false, restaurantId);
 
     io.to(restaurantId.toString()).emit("order:created", {
       orderId: order._id,
@@ -201,9 +251,6 @@ export const createOrder = async (req, res) => {
     return res.status(201).json({ message: "Order created", order });
   } catch (err) {
     console.error("[ORDER create]", err);
-    if (err?.name === "ValidationError" || err?.name === "CastError") {
-      return res.status(400).json({ error: err.message });
-    }
     return res.status(500).json({ error: "Internal Server Error" });
   }
 };
@@ -262,9 +309,13 @@ export const updateOrder = async (req, res) => {
 
     if (items && Array.isArray(items)) {
       if (!validateItems(items, res)) return;
+
+      await adjustStock(order.items, true, restaurantId);
+
       order.items = items;
       order.totalAmount = computeTotals(items).totalAmount;
-      applyPayment(order, order.paymentStatus, order.customerName);
+
+      await adjustStock(items, false, restaurantId);
     }
 
     if (paymentStatus) {
@@ -316,9 +367,6 @@ export const updateOrder = async (req, res) => {
     res.status(200).json({ message: "Order updated", order });
   } catch (err) {
     console.error("[ORDER update]", err);
-    if (err?.name === "ValidationError" || err?.name === "CastError") {
-      return res.status(400).json({ error: err.message });
-    }
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
@@ -329,19 +377,19 @@ export const deleteOrder = async (req, res) => {
     if (!restaurantId) return;
 
     const { id } = req.params;
-    const deleted = await Order.findOneAndDelete({
+    const order = await Order.findOneAndDelete({
       _id: id,
       restaurant: restaurantId,
     });
-    if (!deleted) return res.status(404).json({ error: "Order not found" });
+    if (!order) return res.status(404).json({ error: "Order not found" });
 
-    await Table.findByIdAndUpdate(deleted.table, {
-      $set: { status: "available", currentOrderId: null },
-    });
+    await freeTable(order.table);
+
+    await adjustStock(order.items, true, restaurantId);
 
     io.to(restaurantId.toString()).emit("order:deleted", {
-      orderId: deleted._id,
-      tableId: deleted.table,
+      orderId: order._id,
+      tableId: order.table,
       deletedAt: new Date(),
     });
 

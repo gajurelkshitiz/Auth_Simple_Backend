@@ -15,6 +15,7 @@ import userRouter from "./routes/userRoute.js";
 import restaurantRouter from "./routes/restaurantRoute.js";
 import authRouter from "./routes/authRoute.js";
 import kotRouter from "./routes/kotRoute.js";
+import stockRouter from "./routes/stockRoute.js";
 
 const app = express();
 app.use(
@@ -38,6 +39,7 @@ app.use("/api/v1/orders", orderRouter);
 app.use("/api/v1/users", userRouter);
 app.use("/api/v1/restaurants", restaurantRouter);
 app.use("/api/v1/kots", kotRouter);
+app.use("/api/v1/stocks", stockRouter);
 
 app.get("/", (_req, res) => {
   res.send("Test Route is fine!");
