@@ -7,34 +7,22 @@ const stockHistorySchema = new mongoose.Schema(
       ref: "Stock",
       required: true,
     },
-    quantityAdded: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-    pricePerUnit: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-    totalCost: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-    note: { type: String, trim: true },
+    quantityAdded: { type: Number, required: true },
+    pricePerUnit: { type: Number, required: true },
+    totalCost: { type: Number },
+    note: { type: String },
     restaurant: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Restaurant",
       required: true,
     },
-    addedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-    },
   },
   { timestamps: true }
 );
+
+stockHistorySchema.pre("save", function (next) {
+  this.totalCost = this.quantityAdded * this.pricePerUnit;
+  next();
+});
 
 export default mongoose.model("StockHistory", stockHistorySchema);

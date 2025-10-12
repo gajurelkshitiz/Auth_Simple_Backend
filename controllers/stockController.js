@@ -1,5 +1,6 @@
 import Stock from "../models/stock.js";
 import Restaurant from "../models/restaurant.js";
+import StockHistory from "../models/stockHistory.js";
 
 const isAdmin = (role) => role === "admin";
 const isManager = (role) => role === "manager";
@@ -82,15 +83,19 @@ export const getStockById = async (req, res) => {
   try {
     const restaurantId = req.user?.restaurantId;
     const { id } = req.params;
+
     if (!restaurantId)
       return res.status(400).json({ error: "Restaurant context missing" });
 
     const stock = await Stock.findOne({ _id: id, restaurant: restaurantId });
-    if (!stock) return res.status(404).json({ error: "Stock not found" });
+    if (!stock)
+      return res
+        .status(404)
+        .json({ error: "Stock not found for this restaurant" });
 
     const history = await StockHistory.find({ stock: id })
-      .populate("addedBy", "name email")
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
 
     res.status(200).json({ stock, history });
   } catch (err) {
@@ -169,10 +174,9 @@ export const deleteStock = async (req, res) => {
 export const addStockEntry = async (req, res) => {
   try {
     const { stockId, quantityAdded, pricePerUnit, note } = req.body;
-    const restaurantId = req.user.restaurantId;
-    const userId = req.user._id;
+    const restaurantId = req.user?.restaurantId;
 
-    if (!mongoose.Types.ObjectId.isValid(stockId)) {
+    if (!stockId || !mongoose.Types.ObjectId.isValid(stockId)) {
       return res.status(400).json({ error: "Invalid stock ID" });
     }
 
@@ -180,37 +184,26 @@ export const addStockEntry = async (req, res) => {
       _id: stockId,
       restaurant: restaurantId,
     });
-    if (!stock) return res.status(404).json({ error: "Stock not found" });
-
-    const q = Number(quantityAdded);
-    const p = Number(pricePerUnit);
-    if (!Number.isFinite(q) || q <= 0)
-      return res.status(400).json({ error: "Invalid quantity" });
-    if (!Number.isFinite(p) || p < 0)
-      return res.status(400).json({ error: "Invalid price" });
+    if (!stock)
+      return res
+        .status(404)
+        .json({ error: "Stock not found for this restaurant" });
 
     const entry = new StockHistory({
       stock: stockId,
-      quantityAdded: q,
-      pricePerUnit: p,
-      totalCost: q * p,
-      note,
       restaurant: restaurantId,
-      addedBy: userId,
+      quantityAdded,
+      pricePerUnit,
+      note,
     });
 
     await entry.save();
-
-    stock.quantity += q;
+    stock.quantity += Number(quantityAdded);
     await stock.save();
 
-    res.status(201).json({
-      message: "Stock entry added successfully",
-      updatedStock: stock,
-      newEntry: entry,
-    });
-  } catch (error) {
-    console.error("[ADD STOCK ENTRY]", error);
-    res.status(500).json({ error: "Server error" });
+    res.status(201).json({ message: "Stock updated", entry });
+  } catch (err) {
+    console.error("[STOCK addEntry]", err);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };
