@@ -19,55 +19,35 @@ const ensureRestaurant = (req, res) => {
 
 export const createStock = async (req, res) => {
   try {
-    console.log("Incoming stock body:", req.body);
-    console.log("Item field type:", typeof req.body.item);
-    console.log("Type of item :", typeof req.body.item);
-    const role = req.user?.role;
-    if (!(isAdmin(role) || isManager(role) || isSuper(role))) {
-      return res
-        .status(403)
-        .json({ error: "Only admin/manager/super can create stock" });
-    }
+    const { name, unit, quantity, alertThreshold, autoDecrement, item } =
+      req.body;
+    const restaurant = req.user.restaurantId || req.body.restaurantId;
 
-    const restaurantId = ensureRestaurant(req, res);
-    if (!restaurantId) return;
-
-    const { name, unit, quantity, autoDecrement, alertThreshold, item } =
-      req.body ?? {};
-    if (!name || name.toString().trim() === "") {
-      return res.status(400).json({ error: "Stock name is required" });
-    }
-    const q = Number(quantity ?? 0);
-    if (!Number.isFinite(q) || q < 0) {
+    if (!name || !unit || quantity == null) {
       return res
         .status(400)
-        .json({ error: "quantity must be a non-negative number" });
-    }
-    if (!item) {
-      return res.status(400).json({ error: "Item ID is required" });
+        .json({ error: "Name, unit, and quantity are required" });
     }
 
-    if (isSuper(req.user?.role) && req.body?.restaurantId) {
-      const r = await Restaurant.findById(req.body.restaurantId);
-      if (!r) return res.status(400).json({ error: "Invalid restaurant ID" });
+    if (item && !mongoose.Types.ObjectId.isValid(item)) {
+      return res.status(400).json({ error: "Invalid item ID" });
     }
 
-    const stock = await Stock.create({
-      name: name.toString().trim(),
-      unit: (unit ?? "").toString().trim(),
-      quantity: q,
-      autoDecrement: Boolean(autoDecrement),
-      alertThreshold: Number(alertThreshold ?? 0),
-      restaurant: restaurantId,
-      item,
-      createdBy: req.user.userId,
-      createdByRole: req.user.role,
+    const stock = new Stock({
+      name,
+      unit,
+      quantity,
+      alertThreshold,
+      autoDecrement: !!autoDecrement,
+      restaurant,
+      item: item || null,
     });
 
-    return res.status(201).json({ message: "Stock created", stock });
-  } catch (err) {
-    console.error("[STOCK create]", err);
-    res.status(500).json({ error: "Internal Server Error" });
+    await stock.save();
+    res.status(201).json(stock);
+  } catch (error) {
+    console.error("Error creating stock:", error);
+    res.status(500).json({ error: "Server error" });
   }
 };
 

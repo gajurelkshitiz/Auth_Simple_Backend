@@ -11,11 +11,13 @@ const stockSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Restaurant",
       required: true,
-      index: true,
     },
-    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    createdByRole: { type: String },
-    item: { type: mongoose.Schema.Types.ObjectId, ref: "Item", required: true },
+    item: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Item",
+      required: false,
+      default: null,
+    },
   },
   { timestamps: true }
 );
