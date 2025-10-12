@@ -88,7 +88,11 @@ export const getStockById = async (req, res) => {
     const stock = await Stock.findOne({ _id: id, restaurant: restaurantId });
     if (!stock) return res.status(404).json({ error: "Stock not found" });
 
-    res.status(200).json({ stock });
+    const history = await StockHistory.find({ stock: id })
+      .populate("addedBy", "name email")
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({ stock, history });
   } catch (err) {
     console.error("[STOCK getById]", err);
     res.status(500).json({ error: "Internal Server Error" });
@@ -160,5 +164,53 @@ export const deleteStock = async (req, res) => {
   } catch (err) {
     console.error("[STOCK delete]", err);
     res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+export const addStockEntry = async (req, res) => {
+  try {
+    const { stockId, quantityAdded, pricePerUnit, note } = req.body;
+    const restaurantId = req.user.restaurantId;
+    const userId = req.user._id;
+
+    if (!mongoose.Types.ObjectId.isValid(stockId)) {
+      return res.status(400).json({ error: "Invalid stock ID" });
+    }
+
+    const stock = await Stock.findOne({
+      _id: stockId,
+      restaurant: restaurantId,
+    });
+    if (!stock) return res.status(404).json({ error: "Stock not found" });
+
+    const q = Number(quantityAdded);
+    const p = Number(pricePerUnit);
+    if (!Number.isFinite(q) || q <= 0)
+      return res.status(400).json({ error: "Invalid quantity" });
+    if (!Number.isFinite(p) || p < 0)
+      return res.status(400).json({ error: "Invalid price" });
+
+    const entry = new StockHistory({
+      stock: stockId,
+      quantityAdded: q,
+      pricePerUnit: p,
+      totalCost: q * p,
+      note,
+      restaurant: restaurantId,
+      addedBy: userId,
+    });
+
+    await entry.save();
+
+    stock.quantity += q;
+    await stock.save();
+
+    res.status(201).json({
+      message: "Stock entry added successfully",
+      updatedStock: stock,
+      newEntry: entry,
+    });
+  } catch (error) {
+    console.error("[ADD STOCK ENTRY]", error);
+    res.status(500).json({ error: "Server error" });
   }
 };
