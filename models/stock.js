@@ -27,7 +27,7 @@ const stockSchema = new mongoose.Schema(
       required: false,
       default: null,
     },
-    history: [stockHistorySchema], // ⬅️ new: track purchase history
+    history: [stockHistorySchema],
   },
   { timestamps: true }
 );

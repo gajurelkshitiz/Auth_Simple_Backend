@@ -1,3 +1,5 @@
+import mongoose from "mongoose";
+import Item from "../models/item.js";
 import Stock from "../models/stock.js";
 import Restaurant from "../models/restaurant.js";
 import StockHistory from "../models/stockHistory.js";
@@ -20,35 +22,40 @@ const ensureRestaurant = (req, res) => {
 
 export const createStock = async (req, res) => {
   try {
-    const { name, unit, quantity, alertThreshold, autoDecrement, item } =
+    const restaurantId = ensureRestaurant(req, res);
+    if (!restaurantId) return;
+    const { name, unit, quantity, autoDecrement, alertThreshold, itemName } =
       req.body;
-    const restaurant = req.user.restaurantId || req.body.restaurantId;
 
-    if (!name || !unit || quantity == null) {
-      return res
-        .status(400)
-        .json({ error: "Name, unit, and quantity are required" });
-    }
+    let linkedItem = null;
 
-    if (item && !mongoose.Types.ObjectId.isValid(item)) {
-      return res.status(400).json({ error: "Invalid item ID" });
+    if (itemName) {
+      linkedItem = await Item.findOne({
+        name: itemName,
+        restaurant: restaurantId,
+      });
+      if (!linkedItem) {
+        return res
+          .status(400)
+          .json({ error: `Item "${itemName}" not found in this restaurant.` });
+      }
     }
 
     const stock = new Stock({
       name,
       unit,
       quantity,
+      autoDecrement,
       alertThreshold,
-      autoDecrement: !!autoDecrement,
-      restaurant,
-      item: item || null,
+      restaurant: restaurantId,
+      item: linkedItem ? linkedItem._id : null,
     });
 
     await stock.save();
-    res.status(201).json(stock);
+    res.status(201).json({ message: "Stock created successfully", stock });
   } catch (error) {
     console.error("Error creating stock:", error);
-    res.status(500).json({ error: "Server error" });
+    res.status(500).json({ error: "Failed to create stock" });
   }
 };
 
@@ -106,50 +113,33 @@ export const getStockById = async (req, res) => {
 
 export const updateStock = async (req, res) => {
   try {
-    const role = req.user?.role;
-    if (!(isAdmin(role) || isManager(role) || isSuper(role))) {
-      return res
-        .status(403)
-        .json({ error: "Only admin/manager/super can update stock" });
-    }
-
-    const restaurantId = ensureRestaurant(req, res);
-    if (!restaurantId) return;
-
     const { id } = req.params;
-    const { quantity, price } = req.body;
+    const { name, unit, quantity, autoDecrement, alertThreshold, itemName } =
+      req.body;
+    const restaurant = req.user.restaurant;
 
-    const existing = await Stock.findOne({ _id: id, restaurant: restaurantId });
-    if (!existing) return res.status(404).json({ error: "Stock not found" });
+    let stock = await Stock.findOne({ _id: id, restaurant });
+    if (!stock) return res.status(404).json({ error: "Stock not found" });
 
-    if (!quantity || !price) {
-      return res.status(400).json({ error: "Quantity and price are required" });
+    let linkedItem = null;
+    if (itemName) {
+      linkedItem = await Item.findOne({ name: itemName, restaurant });
+      if (!linkedItem)
+        return res.status(400).json({ error: `Item "${itemName}" not found.` });
     }
 
-    const q = Number(quantity);
-    const p = Number(price);
+    stock.name = name ?? stock.name;
+    stock.unit = unit ?? stock.unit;
+    stock.quantity = quantity ?? stock.quantity;
+    stock.autoDecrement = autoDecrement ?? stock.autoDecrement;
+    stock.alertThreshold = alertThreshold ?? stock.alertThreshold;
+    stock.item = linkedItem ? linkedItem._id : stock.item;
 
-    if (!Number.isFinite(q) || q <= 0) {
-      return res.status(400).json({ error: "Invalid quantity" });
-    }
-
-    if (!Number.isFinite(p) || p <= 0) {
-      return res.status(400).json({ error: "Invalid price" });
-    }
-
-    existing.quantity += q;
-
-    existing.history.push({
-      quantity: q,
-      price: p,
-      date: new Date(),
-    });
-
-    const updated = await existing.save();
-    res.status(200).json({ message: "Stock updated", stock: updated });
-  } catch (err) {
-    console.error("[STOCK update]", err);
-    res.status(500).json({ error: "Internal Server Error" });
+    await stock.save();
+    res.json({ message: "Stock updated", stock });
+  } catch (error) {
+    console.error("Error updating stock:", error);
+    res.status(500).json({ error: "Failed to update stock" });
   }
 };
 

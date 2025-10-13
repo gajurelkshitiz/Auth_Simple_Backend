@@ -125,7 +125,7 @@ async function adjustStock(items, increase = false, restaurantId) {
       restaurant: restaurantId,
     });
 
-    if (!stockDoc) continue; // no stock tracking for this item
+    if (!stockDoc) continue;
 
     if (stockDoc.autoDecrement) {
       const oldQty = stockDoc.quantity;
@@ -209,6 +209,8 @@ export const createOrder = async (req, res) => {
     await occupyTable(table._id, order._id);
 
     await adjustStock(items, false, restaurantId);
+
+    await order.populate("items.item", "name");
 
     io.to(restaurantId.toString()).emit("order:created", {
       orderId: order._id,
@@ -386,6 +388,8 @@ export const deleteOrder = async (req, res) => {
     await freeTable(order.table);
 
     await adjustStock(order.items, true, restaurantId);
+
+    await order.populate("items.item", "name");
 
     io.to(restaurantId.toString()).emit("order:deleted", {
       orderId: order._id,
