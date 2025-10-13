@@ -1,5 +1,14 @@
 import mongoose from "mongoose";
 
+const stockHistorySchema = new mongoose.Schema(
+  {
+    quantity: { type: Number, required: true },
+    price: { type: Number, required: true },
+    date: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
 const stockSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
@@ -18,6 +27,7 @@ const stockSchema = new mongoose.Schema(
       required: false,
       default: null,
     },
+    history: [stockHistorySchema], // ⬅️ new: track purchase history
   },
   { timestamps: true }
 );

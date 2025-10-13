@@ -117,29 +117,36 @@ export const updateStock = async (req, res) => {
     if (!restaurantId) return;
 
     const { id } = req.params;
+    const { quantity, price } = req.body;
+
     const existing = await Stock.findOne({ _id: id, restaurant: restaurantId });
     if (!existing) return res.status(404).json({ error: "Stock not found" });
 
-    const { name, unit, quantity, autoDecrement, alertThreshold } =
-      req.body ?? {};
-
-    if (name !== undefined) existing.name = name.toString().trim();
-    if (unit !== undefined) existing.unit = unit.toString().trim();
-    if (quantity !== undefined) {
-      const q = Number(quantity);
-      if (!Number.isFinite(q) || q < 0)
-        return res
-          .status(400)
-          .json({ error: "quantity must be a non-negative number" });
-      existing.quantity = q;
+    if (!quantity || !price) {
+      return res.status(400).json({ error: "Quantity and price are required" });
     }
-    if (autoDecrement !== undefined)
-      existing.autoDecrement = Boolean(autoDecrement);
-    if (alertThreshold !== undefined)
-      existing.alertThreshold = Number(alertThreshold);
+
+    const q = Number(quantity);
+    const p = Number(price);
+
+    if (!Number.isFinite(q) || q <= 0) {
+      return res.status(400).json({ error: "Invalid quantity" });
+    }
+
+    if (!Number.isFinite(p) || p <= 0) {
+      return res.status(400).json({ error: "Invalid price" });
+    }
+
+    existing.quantity += q;
+
+    existing.history.push({
+      quantity: q,
+      price: p,
+      date: new Date(),
+    });
 
     const updated = await existing.save();
-    return res.status(200).json({ message: "Stock updated", stock: updated });
+    res.status(200).json({ message: "Stock updated", stock: updated });
   } catch (err) {
     console.error("[STOCK update]", err);
     res.status(500).json({ error: "Internal Server Error" });
