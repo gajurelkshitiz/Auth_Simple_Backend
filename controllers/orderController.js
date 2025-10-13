@@ -399,10 +399,10 @@ export const deleteOrder = async (req, res) => {
 
     const kot = await KOT.create({
       restaurant: restaurantId,
-      table: deleted.table,
-      order: deleted._id,
+      table: order.table,
+      order: order._id,
       type: "VOID",
-      items: deleted.items.map((it) => ({
+      items: order.items.map((it) => ({
         item: it.item,
         name: it.item?.name || undefined,
         unitName: it.unitName,
