@@ -191,81 +191,38 @@ export const deleteStock = async (req, res) => {
   }
 };
 
-export const addStockEntry = async (req, res) => {
+export const addStockPurchase = async (req, res) => {
   try {
-    const { stockId, quantityAdded, pricePerUnit, note } = req.body;
+    const { id } = req.params;
+    const { quantity, price } = req.body;
     const restaurantId = req.user?.restaurantId;
 
-    if (!stockId || !mongoose.Types.ObjectId.isValid(stockId)) {
-      return res.status(400).json({ error: "Invalid stock ID" });
-    }
+    if (!restaurantId)
+      return res.status(400).json({ error: "Restaurant context missing" });
 
-    const stock = await Stock.findOne({
-      _id: stockId,
-      restaurant: restaurantId,
-    });
+    const stock = await Stock.findOne({ _id: id, restaurant: restaurantId });
     if (!stock)
       return res
         .status(404)
         .json({ error: "Stock not found for this restaurant" });
 
     const entry = new StockHistory({
-      stock: stockId,
+      stock: id,
       restaurant: restaurantId,
-      quantityAdded,
-      pricePerUnit,
-      note,
+      quantityAdded: quantity,
+      pricePerUnit: price,
+      note: "Purchase entry",
     });
 
     await entry.save();
-    stock.quantity += Number(quantityAdded);
+
+    stock.quantity += Number(quantity);
     await stock.save();
 
-    res.status(201).json({ message: "Stock updated", entry });
+    res.status(201).json({ message: "Purchase added successfully", entry });
   } catch (err) {
-    console.error("[STOCK addEntry]", err);
+    console.error("[STOCK addPurchase]", err);
     res.status(500).json({ error: "Internal Server Error" });
-  }
-};
-
-export const addStockPurchase = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { quantity, price } = req.body;
-    const restaurantId = req.user?.restaurantId; // comes from your JWT middleware
-
-    if (!restaurantId) {
-      return res.status(400).json({ error: "Restaurant context missing" });
-    }
-
-    if (!quantity || quantity <= 0) {
-      return res.status(400).json({ error: "Invalid quantity" });
-    }
-
-    const stock = await Stock.findOne({ _id: id, restaurant: restaurantId });
-    if (!stock) {
-      return res.status(404).json({ error: "Stock not found" });
-    }
-
-    // Add purchase entry
-    stock.history.push({
-      quantity,
-      price,
-      date: new Date(),
-    });
-
-    // Update quantity
-    stock.quantity += quantity;
-
-    await stock.save();
-
-    return res.status(200).json({
-      message: "Purchase added successfully",
-      stock,
-    });
-  } catch (error) {
-    console.error("[addStockPurchase]", error);
-    return res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
