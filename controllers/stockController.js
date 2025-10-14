@@ -19,29 +19,20 @@ const ensureRestaurant = (req, res) => {
   return restaurantId;
 };
 
-// ---------------- STOCK UTILITY ----------------
-
 export async function adjustStock(items, increase = false, restaurantId) {
   if (!Array.isArray(items) || items.length === 0) return;
 
-  const populatedItems = await Promise.all(
-    items.map(async (it) => {
-      if (it.item && typeof it.item === "object" && it.item._id) return it;
-      const fullItem = await Item.findById(it.item).select("name");
-      return { ...it, item: fullItem };
-    })
-  );
-
-  for (const it of populatedItems) {
-    if (!it.item?._id) continue;
+  for (const orderItem of items) {
+    const dbItem = await Item.findById(orderItem.item);
+    if (!dbItem) continue;
 
     const stockDoc = await Stock.findOne({
-      item: it.item._id,
+      item: dbItem._id,
       restaurant: restaurantId,
     });
     if (!stockDoc) continue;
 
-    const qtyChange = increase ? it.quantity : -it.quantity;
+    const qtyChange = increase ? orderItem.quantity : -orderItem.quantity;
 
     if (stockDoc.autoDecrement) {
       stockDoc.quantity = Math.max(0, stockDoc.quantity + qtyChange);
@@ -52,7 +43,7 @@ export async function adjustStock(items, increase = false, restaurantId) {
         restaurant: restaurantId,
         quantityAdded: qtyChange,
         note: increase
-          ? "Stock increment due to order update/cancel"
+          ? "Stock restored due to order update/cancel"
           : "Auto-decrement from sale",
       });
 
@@ -62,22 +53,12 @@ export async function adjustStock(items, increase = false, restaurantId) {
         );
       }
     } else {
-      if (increase) {
-        stockDoc.quantity += it.quantity;
-        await stockDoc.save();
-
-        await StockHistory.create({
-          stock: stockDoc._id,
-          restaurant: restaurantId,
-          quantityAdded: it.quantity,
-          note: "Manual stock increment",
-        });
-      }
+      console.log(
+        `[Manual Stock] ${stockDoc.name} not auto-decremented (manual control required)`
+      );
     }
   }
 }
-
-// ---------------- STOCK CONTROLLER ----------------
 
 export const createStock = async (req, res) => {
   try {

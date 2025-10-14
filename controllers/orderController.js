@@ -106,8 +106,6 @@ function validateItems(items, res) {
   return true;
 }
 
-// ----------------- ORDER CONTROLLER -----------------
-
 export const createOrder = async (req, res) => {
   try {
     const restaurantId = ensureRestaurant(req, res);
