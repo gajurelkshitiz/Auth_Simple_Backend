@@ -197,32 +197,39 @@ export const addStockPurchase = async (req, res) => {
     const { quantity, price } = req.body;
     const restaurantId = req.user?.restaurantId;
 
-    if (!restaurantId)
+    if (!restaurantId) {
       return res.status(400).json({ error: "Restaurant context missing" });
+    }
+
+    if (!quantity || quantity <= 0) {
+      return res.status(400).json({ error: "Invalid quantity" });
+    }
 
     const stock = await Stock.findOne({ _id: id, restaurant: restaurantId });
-    if (!stock)
-      return res
-        .status(404)
-        .json({ error: "Stock not found for this restaurant" });
+    if (!stock) {
+      return res.status(404).json({ error: "Stock not found" });
+    }
 
-    const entry = new StockHistory({
-      stock: id,
+    const historyEntry = new StockHistory({
+      stock: stock._id,
       restaurant: restaurantId,
       quantityAdded: quantity,
       pricePerUnit: price,
-      note: "Purchase entry",
+      note: "Purchase added manually",
     });
+    await historyEntry.save();
 
-    await entry.save();
-
-    stock.quantity += Number(quantity);
+    stock.quantity += quantity;
     await stock.save();
 
-    res.status(201).json({ message: "Purchase added successfully", entry });
-  } catch (err) {
-    console.error("[STOCK addPurchase]", err);
-    res.status(500).json({ error: "Internal Server Error" });
+    return res.status(200).json({
+      message: "Purchase added successfully",
+      stock,
+      historyEntry,
+    });
+  } catch (error) {
+    console.error("[addStockPurchase]", error);
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
