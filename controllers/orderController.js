@@ -7,8 +7,7 @@ import KOT from "../models/kot.js";
 import { printKOT } from "../utils/printKOT.js";
 import { io } from "../index.js";
 import Item from "../models/item.js";
-import Stock from "../models/stock.js";
-import { decrementStockForItem } from "./stockController.js";
+import { adjustStock } from "./stockController.js";
 
 const ensureRestaurant = (req, res) => {
   const restaurantId = req.user?.restaurantId;
@@ -107,51 +106,7 @@ function validateItems(items, res) {
   return true;
 }
 
-async function adjustStock(items, increase = false, restaurantId) {
-  if (!Array.isArray(items) || items.length === 0) return;
-
-  const populatedItems = await Promise.all(
-    items.map(async (it) => {
-      if (it.item && typeof it.item === "object" && it.item._id) return it;
-      const fullItem = await Item.findById(it.item).select("name");
-      return { ...it, item: fullItem };
-    })
-  );
-
-  for (const it of populatedItems) {
-    if (!it.item?._id) continue;
-
-    const stockDoc = await Stock.findOne({
-      item: it.item._id,
-      restaurant: restaurantId,
-    });
-
-    if (!stockDoc) continue;
-
-    if (stockDoc.autoDecrement) {
-      const oldQty = stockDoc.quantity;
-      stockDoc.quantity = increase
-        ? stockDoc.quantity + it.quantity
-        : stockDoc.quantity - it.quantity;
-
-      if (stockDoc.quantity < 0) stockDoc.quantity = 0;
-
-      await stockDoc.save();
-
-      console.log(
-        `[STOCK] ${stockDoc.name} ${
-          increase ? "restocked" : "decremented"
-        }: ${oldQty} → ${stockDoc.quantity}`
-      );
-
-      if (stockDoc.quantity <= stockDoc.alertThreshold) {
-        console.warn(
-          `[ALERT] Low stock: ${stockDoc.name} (${stockDoc.quantity} ${stockDoc.unit} left)`
-        );
-      }
-    }
-  }
-}
+// ----------------- ORDER CONTROLLER -----------------
 
 export const createOrder = async (req, res) => {
   try {
@@ -209,12 +164,6 @@ export const createOrder = async (req, res) => {
     await order.save();
     await occupyTable(table._id, order._id);
 
-    await Promise.all(
-      items.map((it) =>
-        decrementStockForItem(it.item, it.quantity, restaurantId)
-      )
-    );
-
     await adjustStock(items, false, restaurantId);
 
     await order.populate("items.item", "name");
@@ -244,7 +193,6 @@ export const createOrder = async (req, res) => {
 
     try {
       printKOT(await kot.populate(["table", "order"]));
-
       io.to(restaurantId.toString()).emit("kot:new", {
         type: "NEW",
         table: table.name,
@@ -320,10 +268,8 @@ export const updateOrder = async (req, res) => {
       if (!validateItems(items, res)) return;
 
       await adjustStock(order.items, true, restaurantId);
-
       order.items = items;
       order.totalAmount = computeTotals(items).totalAmount;
-
       await adjustStock(items, false, restaurantId);
     }
 
@@ -360,7 +306,6 @@ export const updateOrder = async (req, res) => {
 
     try {
       printKOT(await kot.populate(["table", "order"]));
-
       io.to(restaurantId.toString()).emit("kot:update", {
         type: "UPDATE",
         table: order.table.name,
@@ -393,7 +338,6 @@ export const deleteOrder = async (req, res) => {
     if (!order) return res.status(404).json({ error: "Order not found" });
 
     await freeTable(order.table);
-
     await adjustStock(order.items, true, restaurantId);
 
     await order.populate("items.item", "name");
@@ -424,9 +368,9 @@ export const deleteOrder = async (req, res) => {
 
       io.to(restaurantId.toString()).emit("kot:void", {
         type: "VOID",
-        tableId: deleted.table,
-        orderId: deleted._id,
-        items: deleted.items,
+        tableId: order.table,
+        orderId: order._id,
+        items: order.items,
         deletedAt: new Date(),
       });
     } catch (err) {
