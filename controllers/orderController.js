@@ -8,6 +8,7 @@ import { printKOT } from "../utils/printKOT.js";
 import { io } from "../index.js";
 import Item from "../models/item.js";
 import Stock from "../models/stock.js";
+import { decrementStockForItem } from "./stockController.js";
 
 const ensureRestaurant = (req, res) => {
   const restaurantId = req.user?.restaurantId;
@@ -207,6 +208,12 @@ export const createOrder = async (req, res) => {
     applyPayment(order, paymentStatus, customerName);
     await order.save();
     await occupyTable(table._id, order._id);
+
+    await Promise.all(
+      items.map((it) =>
+        decrementStockForItem(it.item, it.quantity, restaurantId)
+      )
+    );
 
     await adjustStock(items, false, restaurantId);
 

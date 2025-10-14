@@ -24,6 +24,7 @@ export const createStock = async (req, res) => {
   try {
     const restaurantId = ensureRestaurant(req, res);
     if (!restaurantId) return;
+
     const { name, unit, quantity, autoDecrement, alertThreshold, itemName } =
       req.body;
 
@@ -61,24 +62,27 @@ export const createStock = async (req, res) => {
 
 export const listStocks = async (req, res) => {
   try {
-    const restaurantId = req.user?.restaurantId;
     if (req.user?.role === "super-admin" && req.query?.restaurantId) {
       const r = await Restaurant.findById(req.query.restaurantId);
       if (!r) return res.status(400).json({ error: "Invalid restaurant ID" });
       const stocks = await Stock.find({
         restaurant: req.query.restaurantId,
-      }).sort({ createdAt: -1 });
+      })
+        .populate("item", "name")
+        .sort({ createdAt: -1 });
       return res.status(200).json({ stocks });
     }
 
+    const restaurantId = req.user?.restaurantId;
     if (!restaurantId)
       return res
         .status(400)
         .json({ error: "Restaurant context missing in token" });
 
-    const stocks = await Stock.find({ restaurant: restaurantId }).sort({
-      createdAt: -1,
-    });
+    const stocks = await Stock.find({ restaurant: restaurantId })
+      .populate("item", "name")
+      .sort({ createdAt: -1 });
+
     res.status(200).json({ stocks });
   } catch (err) {
     console.error("[STOCK list]", err);
@@ -94,7 +98,10 @@ export const getStockById = async (req, res) => {
     if (!restaurantId)
       return res.status(400).json({ error: "Restaurant context missing" });
 
-    const stock = await Stock.findOne({ _id: id, restaurant: restaurantId });
+    const stock = await Stock.findOne({
+      _id: id,
+      restaurant: restaurantId,
+    }).populate("item", "name");
     if (!stock)
       return res
         .status(404)
@@ -114,18 +121,33 @@ export const getStockById = async (req, res) => {
 export const updateStock = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, unit, quantity, autoDecrement, alertThreshold, itemName } =
-      req.body;
-    const restaurant = req.user.restaurant;
+    const {
+      name,
+      unit,
+      quantity,
+      autoDecrement,
+      alertThreshold,
+      itemName,
+      item,
+    } = req.body;
 
-    let stock = await Stock.findOne({ _id: id, restaurant });
+    const restaurantId = req.user?.restaurantId;
+    if (!restaurantId)
+      return res.status(400).json({ error: "Restaurant context missing" });
+
+    let stock = await Stock.findOne({ _id: id, restaurant: restaurantId });
     if (!stock) return res.status(404).json({ error: "Stock not found" });
 
     let linkedItem = null;
     if (itemName) {
-      linkedItem = await Item.findOne({ name: itemName, restaurant });
+      linkedItem = await Item.findOne({
+        name: itemName,
+        restaurant: restaurantId,
+      });
       if (!linkedItem)
         return res.status(400).json({ error: `Item "${itemName}" not found.` });
+    } else if (item) {
+      linkedItem = await Item.findById(item);
     }
 
     stock.name = name ?? stock.name;
@@ -136,7 +158,7 @@ export const updateStock = async (req, res) => {
     stock.item = linkedItem ? linkedItem._id : stock.item;
 
     await stock.save();
-    res.json({ message: "Stock updated", stock });
+    res.json({ message: "Stock updated successfully", stock });
   } catch (error) {
     console.error("Error updating stock:", error);
     res.status(500).json({ error: "Failed to update stock" });
@@ -168,6 +190,7 @@ export const deleteStock = async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
+
 export const addStockEntry = async (req, res) => {
   try {
     const { stockId, quantityAdded, pricePerUnit, note } = req.body;
@@ -202,5 +225,33 @@ export const addStockEntry = async (req, res) => {
   } catch (err) {
     console.error("[STOCK addEntry]", err);
     res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+export const decrementStockForItem = async (
+  itemId,
+  quantitySold,
+  restaurantId
+) => {
+  try {
+    const stock = await Stock.findOne({
+      item: itemId,
+      restaurant: restaurantId,
+      autoDecrement: true,
+    });
+
+    if (stock) {
+      stock.quantity -= Number(quantitySold);
+      await stock.save();
+
+      await StockHistory.create({
+        stock: stock._id,
+        restaurant: restaurantId,
+        quantityAdded: -Math.abs(quantitySold),
+        note: "Auto-decrement from sale",
+      });
+    }
+  } catch (err) {
+    console.error("[AUTO DECREMENT ERROR]", err);
   }
 };
