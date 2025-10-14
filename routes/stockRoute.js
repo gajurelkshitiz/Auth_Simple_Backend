@@ -7,6 +7,7 @@ import {
   updateStock,
   deleteStock,
   addStockEntry,
+  addStockPurchase,
 } from "../controllers/stockController.js";
 
 const router = express.Router();
@@ -41,5 +42,7 @@ router.post(
   authMiddleware(["admin", "manager", "super-admin"]),
   addStockEntry
 );
+
+router.post("/purchase/:id", authMiddleware, addStockPurchase);
 
 export default router;
