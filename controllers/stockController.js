@@ -8,14 +8,26 @@ const isManager = (role) => role === "manager";
 const isSuper = (role) => role === "super-admin";
 
 const ensureRestaurant = (req, res) => {
+  console.log(
+    "[ensureRestaurant] user:",
+    req.user,
+    "body.restaurantId:",
+    req.body?.restaurantId
+  );
   if (isSuper(req.user?.role) && req.body?.restaurantId) {
+    console.log(
+      "[ensureRestaurant] Super-admin using restaurantId from body:",
+      req.body.restaurantId
+    );
     return req.body.restaurantId;
   }
   const restaurantId = req.user?.restaurantId;
   if (!restaurantId) {
+    console.log("[ensureRestaurant] No restaurantId found in token!");
     res.status(400).json({ error: "Restaurant context missing in token" });
     return null;
   }
+  console.log("[ensureRestaurant] restaurantId from token:", restaurantId);
   return restaurantId;
 };
 
@@ -62,9 +74,12 @@ export async function adjustStock(items, increase = false, restaurantId) {
 
 export const createStock = async (req, res) => {
   try {
+    console.log("[createStock] body:", req.body);
     const restaurantId = ensureRestaurant(req, res);
-    if (!restaurantId) return;
-
+    if (!restaurantId) {
+      console.log("[createStock] No restaurantId, aborting.");
+      return;
+    }
     const { name, unit, quantity, autoDecrement, alertThreshold, itemName } =
       req.body;
 
@@ -74,6 +89,7 @@ export const createStock = async (req, res) => {
         name: itemName,
         restaurant: restaurantId,
       });
+      console.log("[createStock] linkedItem:", linkedItem);
       if (!linkedItem)
         return res
           .status(400)
@@ -91,9 +107,10 @@ export const createStock = async (req, res) => {
     });
 
     await stock.save();
+    console.log("[createStock] Stock created:", stock);
     res.status(201).json({ message: "Stock created successfully", stock });
   } catch (error) {
-    console.error("Error creating stock:", error);
+    console.error("[createStock] Error creating stock:", error);
     res.status(500).json({ error: "Failed to create stock" });
   }
 };
