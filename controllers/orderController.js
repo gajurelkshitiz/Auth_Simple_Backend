@@ -388,13 +388,29 @@ export const checkoutOrder = async (req, res) => {
     if (!restaurantId) return;
 
     const { id } = req.params;
-    const { force = false } = req.body ?? {};
+    const {
+      force = false,
+      vatPercent = 0,
+      discountPercent = 0,
+    } = req.body ?? {};
 
     const order = await Order.findOne({
       _id: id,
       restaurant: restaurantId,
     }).populate("table");
     if (!order) return res.status(404).json({ error: "Order not found" });
+
+    const subtotal = Number(order.totalAmount) || 0;
+    const discountAmount = (subtotal * Number(discountPercent || 0)) / 100;
+    const vatBase = subtotal - discountAmount;
+    const vatAmount = (vatBase * Number(vatPercent)) / 100;
+    const finalAmount = vatBase + vatAmount;
+
+    order.vatPercent = Number(vatPercent);
+    order.vatAmount = vatAmount;
+    order.discountPercent = Number(discountPercent);
+    order.discountAmount = discountAmount;
+    order.finalAmount = finalTotal;
 
     const hasDue =
       Number(order.dueAmount ?? 0) > 0 || order.paymentStatus !== "Paid";
@@ -412,8 +428,14 @@ export const checkoutOrder = async (req, res) => {
       order.dueAmount = 0;
       order.paymentStatus = "Paid";
       order.customerName = null;
+    } else {
+      const alreadyPaid = Number(order.paidAmount) || 0;
+      const due = finalTotal - alreadyPaid;
+      order.dueAmount = due > 0 ? due : 0;
+      if (order.dueAmount <= 0) {
+        order.paymentStatus = "Paid";
+      }
     }
-
     await order.save();
     await freeTable(order.table);
 
@@ -421,6 +443,9 @@ export const checkoutOrder = async (req, res) => {
       orderId: order._id,
       tableId: order.table._id,
       checkedOutAt: new Date(),
+      vatPercent,
+      discountPercent,
+      finalTotal,
     });
 
     return res.status(200).json({ message: "Checked out", order });

@@ -30,6 +30,11 @@ const orderSchema = new mongoose.Schema(
 
     items: { type: [orderItemSchema], required: true },
     totalAmount: { type: Number, required: true },
+    vatPercent: { type: Number, default: 0 },
+    vatAmount: { type: Number, default: 0 },
+    discountPercent: { type: Number, default: 0 },
+    discountAmount: { type: Number, default: 0 },
+    finalTotal: { type: Number, default: 0 },
     paidAmount: { type: Number, default: 0 },
     dueAmount: { type: Number, default: 0 },
     paymentStatus: {
