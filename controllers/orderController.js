@@ -276,8 +276,31 @@ export const updateOrder = async (req, res) => {
     }).populate("table");
     if (!order) return res.status(404).json({ error: "Order not found" });
 
+    let addedItems = [];
+    let removedItems = [];
+    let updatedItems = [];
+
     if (items && Array.isArray(items)) {
       if (!validateItems(items, res)) return;
+
+      const oldItemsMap = new Map(
+        order.items.map((it) => [it.item.toString(), it])
+      );
+
+      items.forEach((it) => {
+        const old = oldItemsMap.get(it.item.toString());
+        if (!old) {
+          addedItems.push(it);
+        } else if (
+          old.quantity !== it.quantity ||
+          old.unitName !== it.unitName
+        ) {
+          updatedItems.push({ oldItem: old, newItem: it });
+        }
+        oldItemsMap.delete(it.item.toString());
+      });
+
+      voidedItems = [...oldItemsMap.values()];
 
       await adjustStock(order.items, true, restaurantId);
       order.items = items;
@@ -301,34 +324,48 @@ export const updateOrder = async (req, res) => {
       updatedAt: new Date(),
     });
 
-    const kot = await KOT.create({
-      restaurant: restaurantId,
-      table: order.table,
-      order: order._id,
-      type: "UPDATE",
-      items: order.items.map((it) => ({
-        item: it.item,
-        name: it.item?.name || undefined,
-        unitName: it.unitName,
-        quantity: it.quantity,
-      })),
-      createdBy: req.user.userId,
-      createdByRole: req.user.role,
-    });
+    const createKOT = async (type, items) => {
+      if (!items.length) return;
 
-    try {
-      printKOT(await kot.populate(["table", "order"]));
-      io.to(restaurantId.toString()).emit("kot:update", {
-        type: "UPDATE",
-        table: order.table.name,
-        tableId: order.table._id,
-        orderId: order._id,
-        items: order.items,
-        updatedAt: new Date(),
+      const kot = await KOT.create({
+        restaurant: restaurantId,
+        table: order.table,
+        order: order._id,
+        type,
+        items: items.map((it) => {
+          if (type === "UPDATE" && it.oldItem) {
+            return {
+              item: it.newItem.item,
+              name: it.newItem.name || it.oldItem.name,
+              unitName: it.newItem.unitName,
+              quantity: it.newItem.quantity,
+              oldQuantity: it.oldItem.quantity,
+            };
+          }
+          return it;
+        }),
+        createdBy: req.user.userId,
+        createdByRole: req.user.role,
       });
-    } catch (err) {
-      console.warn("[KOT print error]", err.message);
-    }
+
+      try {
+        printKOT(await kot.populate(["table", "order"]));
+        io.to(restaurantId.toString()).emit(`kot:${type.toLowerCase()}`, {
+          type,
+          table: order.table.name,
+          tableId: order.table._id,
+          orderId: order._id,
+          items,
+          updatedAt: new Date(),
+        });
+      } catch (err) {
+        console.warn("[KOT print error]", err.message);
+      }
+    };
+
+    await createKOT("NEW", addedItems);
+    await createKOT("UPDATE", updatedItems);
+    await createKOT("VOID", removedItems);
 
     res.status(200).json({ message: "Order updated", order });
   } catch (err) {

@@ -22,8 +22,15 @@ export const printKOT = (kot) => {
   doc.moveDown();
   doc.text("Items:", { underline: true });
 
+  // Updated loop
   kot.items.forEach((it) => {
-    doc.text(`• ${it.name || "Unknown"} (${it.unitName}) x ${it.quantity}`);
+    if (it.oldQuantity) {
+      doc.text(
+        `• ${it.name} (${it.unitName}) ${it.oldQuantity} → ${it.quantity}`
+      );
+    } else {
+      doc.text(`• ${it.name} (${it.unitName}) x${it.quantity}`);
+    }
   });
 
   doc.end();
