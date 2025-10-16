@@ -523,7 +523,7 @@ export const bulkCheckout = async (req, res) => {
         io.to(restaurantId.toString()).emit("order:checkedOut", {
           orderId: order._id,
           tableId: order.table._id,
-          checkedOutAt: new Date(),
+          checkedOutAt: order.checkedOutAt,
         });
       } catch (e) {
         failed++;
