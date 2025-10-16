@@ -36,20 +36,34 @@ function computeTotals(items = []) {
 }
 
 function applyPayment(order, paymentStatus, customerName) {
-  order.paymentStatus = paymentStatus;
+  const subtotal = Number(order.totalAmount) || 0;
+  const discountPercent = Number(order.discountPercent || 0);
+  const vatPercent = Number(order.vatPercent || 0);
+
+  const discountAmount = (subtotal * discountPercent) / 100;
+  const discountedBase = subtotal - discountAmount;
+  const vatAmount = (discountedBase * vatPercent) / 100;
+  const finalAmount = discountedBase + vatAmount;
+
+  order.discountAmount = discountAmount;
+  order.vatAmount = vatAmount;
+  order.finalAmount = finalAmount;
+
   if (paymentStatus === "Paid") {
-    order.paidAmount = order.totalAmount;
+    order.paidAmount = finalAmount;
     order.dueAmount = 0;
     order.customerName = null;
   } else if (paymentStatus === "Due") {
     order.paidAmount = 0;
-    order.dueAmount = order.totalAmount;
+    order.dueAmount = finalAmount;
     order.customerName = null;
   } else if (paymentStatus === "Credit") {
     order.paidAmount = 0;
-    order.dueAmount = order.totalAmount;
+    order.dueAmount = finalAmount;
     order.customerName = customerName || null;
   }
+
+  order.paymentStatus = paymentStatus;
 }
 
 async function freeTable(tableIdOrDoc) {
@@ -117,6 +131,8 @@ export const createOrder = async (req, res) => {
       paymentStatus = "Paid",
       customerName,
       note,
+      vatPercent = 0,
+      discountPercent = 0,
     } = req.body ?? {};
 
     if (!tableId || !mongoose.Types.ObjectId.isValid(tableId)) {
@@ -148,12 +164,10 @@ export const createOrder = async (req, res) => {
       restaurant: restaurantId,
       items,
       totalAmount,
-      paidAmount: 0,
-      dueAmount: 0,
-      paymentStatus,
-      customerName: paymentStatus === "Credit" ? customerName || null : null,
-      note,
+      vatPercent,
+      discountPercent,
       checkedOut: false,
+      note,
       createdBy: req.user.userId,
       adminId: req.user.userId,
     });
@@ -402,14 +416,14 @@ export const checkoutOrder = async (req, res) => {
 
     const subtotal = Number(order.totalAmount) || 0;
     const discountAmount = (subtotal * Number(discountPercent || 0)) / 100;
-    const vatBase = subtotal - discountAmount;
-    const vatAmount = (vatBase * Number(vatPercent)) / 100;
-    const finalAmount = vatBase + vatAmount;
+    const discountedBase = subtotal - discountAmount;
+    const vatAmount = (discountedBase * Number(vatPercent || 0)) / 100;
+    const finalAmount = discountedBase + vatAmount;
 
-    order.vatPercent = Number(vatPercent);
-    order.vatAmount = vatAmount;
     order.discountPercent = Number(discountPercent);
     order.discountAmount = discountAmount;
+    order.vatPercent = Number(vatPercent);
+    order.vatAmount = vatAmount;
     order.finalAmount = finalAmount;
 
     const hasDue =
@@ -419,12 +433,11 @@ export const checkoutOrder = async (req, res) => {
         .status(400)
         .json({ error: "Order has due amount. Set force=true to override." });
     }
-
     order.checkedOut = true;
     order.checkedOutAt = new Date();
 
     if (hasDue && force) {
-      order.paidAmount = order.totalAmount;
+      order.paidAmount = finalAmount;
       order.dueAmount = 0;
       order.paymentStatus = "Paid";
       order.customerName = null;
@@ -436,13 +449,14 @@ export const checkoutOrder = async (req, res) => {
         order.paymentStatus = "Paid";
       }
     }
+
     await order.save();
     await freeTable(order.table);
 
     io.to(restaurantId.toString()).emit("order:checkedOut", {
       orderId: order._id,
       tableId: order.table._id,
-      checkedOutAt: new Date(),
+      checkedOutAt: order.checkedOutAt,
       vatPercent,
       discountPercent,
       finalAmount,
@@ -451,7 +465,7 @@ export const checkoutOrder = async (req, res) => {
     return res.status(200).json({ message: "Checked out", order });
   } catch (err) {
     console.error("[ORDER checkout]", err);
-    res.status(500).json({ error: "Internal Server Error" });
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
@@ -460,7 +474,12 @@ export const bulkCheckout = async (req, res) => {
     const restaurantId = ensureRestaurant(req, res);
     if (!restaurantId) return;
 
-    const { ids, force = false } = req.body || {};
+    const {
+      ids,
+      force = false,
+      vatPercent = 0,
+      discountPercent = 0,
+    } = req.body || {};
     if (!Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ error: "ids (string[]) is required" });
     }
@@ -493,6 +512,18 @@ export const bulkCheckout = async (req, res) => {
           continue;
         }
 
+        const subtotal = Number(order.totalAmount) || 0;
+        const discountAmount = (subtotal * Number(discountPercent || 0)) / 100;
+        const discountedBase = subtotal - discountAmount;
+        const vatAmount = (discountedBase * Number(vatPercent || 0)) / 100;
+        const finalAmount = discountedBase + vatAmount;
+
+        order.discountPercent = Number(discountPercent);
+        order.discountAmount = discountAmount;
+        order.vatPercent = Number(vatPercent);
+        order.vatAmount = vatAmount;
+        order.finalAmount = finalAmount;
+
         const hasDue =
           Number(order.dueAmount ?? 0) > 0 || order.paymentStatus !== "Paid";
         if (hasDue && !force) {
@@ -508,13 +539,18 @@ export const bulkCheckout = async (req, res) => {
         order.checkedOut = true;
         order.checkedOutAt = new Date();
         if (hasDue && force) {
-          order.paidAmount = order.totalAmount;
+          order.paidAmount = finalAmount;
           order.dueAmount = 0;
           order.paymentStatus = "Paid";
           order.customerName = null;
+        } else {
+          const alreadyPaid = Number(order.paidAmount) || 0;
+          const due = finalAmount - alreadyPaid;
+          order.dueAmount = due > 0 ? due : 0;
+          if (order.dueAmount <= 0) order.paymentStatus = "Paid";
         }
-        await order.save();
 
+        await order.save();
         await freeTable(order.table);
 
         ok++;
@@ -524,6 +560,9 @@ export const bulkCheckout = async (req, res) => {
           orderId: order._id,
           tableId: order.table._id,
           checkedOutAt: order.checkedOutAt,
+          vatPercent,
+          discountPercent,
+          finalAmount,
         });
       } catch (e) {
         failed++;
