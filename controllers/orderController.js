@@ -410,7 +410,7 @@ export const checkoutOrder = async (req, res) => {
     order.vatAmount = vatAmount;
     order.discountPercent = Number(discountPercent);
     order.discountAmount = discountAmount;
-    order.finalAmount = finalTotal;
+    order.finalAmount = finalAmount;
 
     const hasDue =
       Number(order.dueAmount ?? 0) > 0 || order.paymentStatus !== "Paid";
@@ -430,7 +430,7 @@ export const checkoutOrder = async (req, res) => {
       order.customerName = null;
     } else {
       const alreadyPaid = Number(order.paidAmount) || 0;
-      const due = finalTotal - alreadyPaid;
+      const due = finalAmount - alreadyPaid;
       order.dueAmount = due > 0 ? due : 0;
       if (order.dueAmount <= 0) {
         order.paymentStatus = "Paid";
@@ -445,7 +445,7 @@ export const checkoutOrder = async (req, res) => {
       checkedOutAt: new Date(),
       vatPercent,
       discountPercent,
-      finalTotal,
+      finalAmount,
     });
 
     return res.status(200).json({ message: "Checked out", order });
