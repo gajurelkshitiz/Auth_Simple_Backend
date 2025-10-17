@@ -20,11 +20,19 @@ export const printKOT = (kot) => {
   doc.text(`Order ID: ${kot.order.orderId}`);
   doc.text(`Created At: ${new Date(kot.createdAt).toLocaleString()}`);
   doc.moveDown();
-  doc.text("Items:", { underline: true });
 
-  // Updated loop
+  if (kot.type === "VOID") {
+    doc.fontSize(14).text(" Cancelled Items", { underline: true });
+  } else if (kot.type === "UPDATE") {
+    doc.fontSize(14).text("Updated / Added Items", { underline: true });
+  } else {
+    doc.fontSize(14).text("New Order Items", { underline: true });
+  }
+
+  doc.moveDown(0.5);
+
   kot.items.forEach((it) => {
-    if (it.oldQuantity) {
+    if (it.oldQuantity !== undefined) {
       doc.text(
         `• ${it.name} (${it.unitName}) ${it.oldQuantity} → ${it.quantity}`
       );
