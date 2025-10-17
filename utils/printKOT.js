@@ -1,46 +1,70 @@
 import fs from "fs";
 import path from "path";
-import PDFDocument from "pdfkit";
+import { exec } from "child_process";
+import { fileURLToPath } from "url";
 
-export const printKOT = (kot) => {
-  const dir = path.join(process.cwd(), "prints");
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-  const fileName = `KOT_${kot._id}.pdf`;
-  const filePath = path.join(dir, fileName);
+export const printKOT = async (kot) => {
+  try {
+    const tableName = kot.table?.name || "Unknown Table";
+    const orderId = kot.order?._id?.toString().slice(-6).toUpperCase();
+    const kotType = kot.type?.toUpperCase() || "KOT";
+    const time = new Date().toLocaleString("en-US", {
+      hour12: true,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
 
-  const doc = new PDFDocument();
-  doc.pipe(fs.createWriteStream(filePath));
+    let text = "";
 
-  doc
-    .fontSize(16)
-    .text(`KITCHEN ORDER TICKET (${kot.type})`, { align: "center" });
-  doc.moveDown();
-  doc.fontSize(12).text(`Table: ${kot.table.name}`);
-  doc.text(`Order ID: ${kot.order.orderId}`);
-  doc.text(`Created At: ${new Date(kot.createdAt).toLocaleString()}`);
-  doc.moveDown();
+    text += "********************************\n";
+    text += `       KITCHEN ORDER TICKET\n`;
+    text += "********************************\n";
+    text += `Table : ${tableName}\n`;
+    text += `Order : ${orderId}\n`;
+    text += `Type  : ${kotType}\n`;
+    text += `Time  : ${time}\n`;
+    text += "--------------------------------\n";
 
-  if (kot.type === "VOID") {
-    doc.fontSize(14).text(" Cancelled Items", { underline: true });
-  } else if (kot.type === "UPDATE") {
-    doc.fontSize(14).text("Updated / Added Items", { underline: true });
-  } else {
-    doc.fontSize(14).text("New Order Items", { underline: true });
+    kot.items.forEach((it) => {
+      const name = it.name?.toUpperCase() || "Unnamed Item";
+      const unit = it.unitName || "";
+      const qty = it.quantity;
+      const oldQty = it.oldQuantity;
+      const changeType = it.changeType || kot.type;
+
+      if (changeType === "ADDED") {
+        text += `ADDED   : ${name} (${unit}) x${qty}\n`;
+      } else if (changeType === "VOIDED") {
+        text += `CANCEL  : ${name} (${unit}) x${qty}\n`;
+      } else if (changeType === "UPDATED") {
+        text += `UPDATED : ${name} (${unit}) ${oldQty} -> ${qty}\n`;
+      } else {
+        text += `${name} (${unit}) x${qty}\n`;
+      }
+    });
+
+    text += "--------------------------------\n";
+    text += "     PLEASE PREPARE IMMEDIATELY\n";
+    text += "********************************\n\n\n";
+
+    const printDir = path.join(__dirname, "../prints");
+    if (!fs.existsSync(printDir)) fs.mkdirSync(printDir, { recursive: true });
+
+    const filePath = path.join(printDir, `kot_${Date.now()}.txt`);
+    fs.writeFileSync(filePath, text, "utf8");
+
+    exec(`lp "${filePath}"`, (err) => {
+      if (err) {
+        console.error("[KOT print error]", err.message);
+      } else {
+        console.log(`🖨️  KOT printed for ${tableName}`);
+      }
+    });
+  } catch (err) {
+    console.error("[printKOT] error:", err.message);
   }
-
-  doc.moveDown(0.5);
-
-  kot.items.forEach((it) => {
-    if (it.oldQuantity !== undefined) {
-      doc.text(
-        `• ${it.name} (${it.unitName}) ${it.oldQuantity} → ${it.quantity}`
-      );
-    } else {
-      doc.text(`• ${it.name} (${it.unitName}) x${it.quantity}`);
-    }
-  });
-
-  doc.end();
-  return filePath;
 };
