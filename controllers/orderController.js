@@ -325,34 +325,48 @@ export const updateOrder = async (req, res) => {
       updatedAt: new Date(),
     });
 
-    const createKOT = async (type, rawItems) => {
-      if (!rawItems.length) return;
+    const createKOT = async () => {
+      const kotItems = [];
 
-      const formattedItems = rawItems.map((it) => {
-        if (it.oldItem) {
-          return {
-            item: it.newItem.item,
-            name: it.newItem.name || it.oldItem.name,
-            unitName: it.newItem.unitName,
-            quantity: it.newItem.quantity,
-            oldQuantity: it.oldItem.quantity,
-          };
-        } else {
-          return {
-            item: it.item,
-            name: it.name,
-            unitName: it.unitName,
-            quantity: it.quantity,
-          };
-        }
+      addedItems.forEach((it) => {
+        kotItems.push({
+          item: it.item,
+          name: it.name,
+          unitName: it.unitName,
+          quantity: it.quantity,
+          changeType: "ADDED",
+        });
       });
+
+      updatedItems.forEach((it) => {
+        kotItems.push({
+          item: it.newItem.item,
+          name: it.newItem.name || it.oldItem.name,
+          unitName: it.newItem.unitName,
+          oldQuantity: it.oldItem.quantity,
+          quantity: it.newItem.quantity,
+          changeType: "UPDATED",
+        });
+      });
+
+      voidedItems.forEach((it) => {
+        kotItems.push({
+          item: it.item,
+          name: it.name,
+          unitName: it.unitName,
+          quantity: it.quantity,
+          changeType: "VOIDED",
+        });
+      });
+
+      if (!kotItems.length) return;
 
       const kot = await KOT.create({
         restaurant: restaurantId,
         table: order.table._id,
         order: order._id,
-        type,
-        items: formattedItems,
+        type: "UPDATE",
+        items: kotItems,
         createdBy: req.user.userId,
         createdByRole: req.user.role,
       });
@@ -360,12 +374,13 @@ export const updateOrder = async (req, res) => {
       try {
         const populatedKOT = await kot.populate(["table", "order"]);
         printKOT(populatedKOT);
-        io.to(restaurantId.toString()).emit(`kot:${type.toLowerCase()}`, {
-          type,
+
+        io.to(restaurantId.toString()).emit("kot:update", {
+          type: "UPDATE",
           table: order.table.name,
           tableId: order.table._id,
           orderId: order._id,
-          items: formattedItems,
+          items: kotItems,
           updatedAt: new Date(),
         });
       } catch (err) {
@@ -373,9 +388,7 @@ export const updateOrder = async (req, res) => {
       }
     };
 
-    await createKOT("UPDATE", addedItems);
-    await createKOT("UPDATE", updatedItems);
-    await createKOT("VOID", voidedItems);
+    await createKOT();
 
     res.status(200).json({ message: "Order updated successfully", order });
   } catch (err) {
