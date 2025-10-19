@@ -8,6 +8,11 @@ const restaurantSettingsSchema = new mongoose.Schema(
       required: true,
       unique: true,
     },
+    restaurantName: {
+      type: String,
+      trim: true,
+    },
+
     logoUrl: {
       type: String,
       default: null,

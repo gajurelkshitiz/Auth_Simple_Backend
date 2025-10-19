@@ -17,6 +17,7 @@ export const getRestaurantSettings = async (req, res) => {
     if (!settings) {
       return res.status(200).json({
         settings: {
+          restaurantName: "",
           logoUrl: null,
           vatNo: "",
           panNo: "",
@@ -47,7 +48,7 @@ export const updateRestaurantSettings = async (req, res) => {
       return res.status(404).json({ error: "Restaurant not found" });
     }
 
-    const { vatNo, panNo, email, phone, address } = req.body;
+    const { restaurantName, vatNo, panNo, email, phone, address } = req.body;
 
     let logoUrl;
     if (req.file) {
@@ -55,6 +56,7 @@ export const updateRestaurantSettings = async (req, res) => {
     }
 
     const updates = {
+      ...(restaurantName && { restaurantName }),
       ...(vatNo && { vatNo }),
       ...(panNo && { panNo }),
       ...(email && { email }),
