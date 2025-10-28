@@ -11,6 +11,7 @@ const restaurantSettingsSchema = new mongoose.Schema(
     restaurantName: {
       type: String,
       trim: true,
+      default: "Deskgoo Cafe",
     },
 
     logoUrl: {
@@ -37,6 +38,12 @@ const restaurantSettingsSchema = new mongoose.Schema(
     address: {
       type: String,
       trim: true,
+    },
+
+    footerNote: {
+      type: String,
+      trim: true,
+      default: "Thank you for dining with us!",
     },
   },
   { timestamps: true }

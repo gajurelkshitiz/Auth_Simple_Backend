@@ -17,13 +17,14 @@ export const getRestaurantSettings = async (req, res) => {
     if (!settings) {
       return res.status(200).json({
         settings: {
-          restaurantName: "",
+          restaurantName: "Deskgoo Cafe",
           logoUrl: null,
           vatNo: "",
           panNo: "",
           email: "",
           phone: "",
           address: "",
+          footerNote: "Thank you for dining with us!",
         },
       });
     }
@@ -62,6 +63,7 @@ export const updateRestaurantSettings = async (req, res) => {
       ...(email && { email }),
       ...(phone && { phone }),
       ...(address && { address }),
+      ...(footerNote && { footerNote }),
       ...(logoUrl && { logoUrl }),
       restaurant: restaurantId,
     };

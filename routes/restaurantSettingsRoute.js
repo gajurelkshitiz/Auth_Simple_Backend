@@ -8,7 +8,11 @@ import {
 
 const router = express.Router();
 
-router.get("/", authMiddleware(["admin", "manager"]), getRestaurantSettings);
+router.get(
+  "/",
+  authMiddleware(["admin", "manager", "staff"]),
+  getRestaurantSettings
+);
 
 router.put(
   "/",

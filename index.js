@@ -17,6 +17,7 @@ import authRouter from "./routes/authRoute.js";
 import kotRouter from "./routes/kotRoute.js";
 import stockRouter from "./routes/stockRoute.js";
 import restaurantSettingsRoute from "./routes/restaurantSettingsRoute.js";
+import receiptRouter from "./routes/receiptRoute.js";
 
 const app = express();
 app.use(
@@ -51,6 +52,8 @@ app.use((err, _req, res, _next) => {
   console.error("[ERROR]", err);
   res.status(500).json({ error: err.message || "Internal Server Error" });
 });
+
+app.use("/api/v1/receipts", receiptRouter);
 
 const port = process.env.PORT || 3000;
 
