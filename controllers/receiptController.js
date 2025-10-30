@@ -64,11 +64,24 @@ export const saveReceipt = async (req, res) => {
 export const getReceiptByOrderId = async (req, res) => {
   try {
     const { orderId } = req.params;
-    const receipt = await Receipt.findOne({ order: orderId });
+    let receipt = await Receipt.findOne({ order: orderId });
+
     if (!receipt) return res.status(404).json({ error: "Receipt not found" });
+
+    if (!receipt.restaurantName && receipt.order) {
+      const order = await Order.findById(orderId).populate("restaurant");
+      if (order?.restaurant) {
+        const settings = await RestaurantSettings.findOne({
+          restaurant: order.restaurant._id,
+        });
+        receipt.restaurantName = settings?.restaurantName || "Deskgoo Cafe";
+      }
+    }
+
     res.json(receipt);
   } catch (err) {
     console.error("[getReceiptByOrderId]", err);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
+
