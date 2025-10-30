@@ -25,20 +25,28 @@ export const saveReceipt = async (req, res) => {
       order.restaurant._id
     );
 
-    const itemsTotal = order.items.reduce(
+    const subtotal = order.items.reduce(
       (sum, i) => sum + i.price * i.quantity,
       0
     );
 
     const discountAmount = order.discountPercent
-      ? (itemsTotal * order.discountPercent) / 100
+      ? (subtotal * order.discountPercent) / 100
       : order.discountAmount || 0;
 
-    const vatAmount = order.vatPercent
-      ? ((itemsTotal - discountAmount) * order.vatPercent) / 100
-      : 0;
+    const subtotalAfterDiscount = subtotal - discountAmount;
 
-    const finalAmount = itemsTotal - discountAmount + vatAmount;
+    const vatAmount = order.vatPercent
+      ? (subtotalAfterDiscount * order.vatPercent) / 100
+      : order.vatAmount || 0;
+
+    const finalAmount = subtotalAfterDiscount + vatAmount;
+
+    order.subtotal = subtotal;
+    order.discountAmount = discountAmount;
+    order.vatAmount = vatAmount;
+    order.finalAmount = finalAmount;
+    await order.save();
 
     const receiptData = {
       order: order._id,
@@ -53,7 +61,7 @@ export const saveReceipt = async (req, res) => {
         price: i.price,
         quantity: i.quantity,
       })),
-      subtotal: order.totalAmount,
+      subtotal,
       discountPercent: order.discountPercent,
       discountAmount,
       vatPercent: order.vatPercent,
