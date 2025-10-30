@@ -42,7 +42,7 @@ app.use("/api/v1/users", userRouter);
 app.use("/api/v1/restaurants", restaurantRouter);
 app.use("/api/v1/kots", kotRouter);
 app.use("/api/v1/stocks", stockRouter);
-app.use("/api/restaurant-settings", restaurantSettingsRoute);
+app.use("/api/v1/restaurant-settings", restaurantSettingsRoute);
 
 app.get("/", (_req, res) => {
   res.send("Test Route is fine!");
