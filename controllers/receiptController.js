@@ -25,6 +25,21 @@ export const saveReceipt = async (req, res) => {
       order.restaurant._id
     );
 
+    const itemsTotal = order.items.reduce(
+      (sum, i) => sum + i.price * i.quantity,
+      0
+    );
+
+    const discountAmount = order.discountPercent
+      ? (itemsTotal * order.discountPercent) / 100
+      : order.discountAmount || 0;
+
+    const vatAmount = order.vatPercent
+      ? ((itemsTotal - discountAmount) * order.vatPercent) / 100
+      : 0;
+
+    const finalAmount = itemsTotal - discountAmount + vatAmount;
+
     const receiptData = {
       order: order._id,
       restaurantName,
@@ -40,10 +55,10 @@ export const saveReceipt = async (req, res) => {
       })),
       subtotal: order.totalAmount,
       discountPercent: order.discountPercent,
-      discountAmount: order.discountAmount,
+      discountAmount,
       vatPercent: order.vatPercent,
-      vatAmount: order.vatAmount,
-      finalAmount: order.finalAmount,
+      vatAmount,
+      finalAmount,
       paymentStatus: order.paymentStatus,
       printedAt: new Date(),
     };
@@ -84,4 +99,3 @@ export const getReceiptByOrderId = async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
-
