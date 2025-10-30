@@ -38,10 +38,19 @@ export const getRestaurantSettings = async (req, res) => {
 
 export const updateRestaurantSettings = async (req, res) => {
   try {
+    console.log("PUT /restaurant-settings called");
+    console.log("User from token:", req.user);
+    console.log("Request body:", req.body);
+    console.log("Uploaded file:", req.file);
+
     const restaurantId = req.user?.restaurantId;
 
     if (!restaurantId) {
       return res.status(400).json({ error: "Restaurant context missing" });
+    }
+
+    if (!["admin", "manager"].includes(req.user?.role)) {
+      return res.status(403).json({ error: "Permission Denied" });
     }
 
     const restaurant = await Restaurant.findById(restaurantId);
