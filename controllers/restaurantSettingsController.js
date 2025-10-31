@@ -58,21 +58,38 @@ export const updateRestaurantSettings = async (req, res) => {
       return res.status(404).json({ error: "Restaurant not found" });
     }
 
-    const { restaurantName, vatNo, panNo, email, phone, address } = req.body;
+    const { restaurantName, vatNo, panNo, email, phone, address, footerNote } =
+      req.body;
+
+    if (vatNo && panNo) {
+      return res.status(400).json({
+        error:
+          "You can only have either a VAT number or a PAN number, not both.",
+      });
+    }
+
+    if (!vatNo && !panNo) {
+      return res.status(400).json({
+        error: "Please provide either a VAT number or a PAN number.",
+      });
+    }
+
+    const cleanVatNo = vatNo || null;
+    const cleanPanNo = panNo || null;
 
     let logoUrl;
     if (req.file) {
-      logoUrl = path.join(req.file.destination, req.file.filename);
+      logoUrl = `/uploads/logos/${req.file.filename}`;
     }
 
     const updates = {
-      ...(restaurantName && { restaurantName }),
-      ...(vatNo && { vatNo }),
-      ...(panNo && { panNo }),
-      ...(email && { email }),
-      ...(phone && { phone }),
-      ...(address && { address }),
-      ...(footerNote && { footerNote }),
+      ...(restaurantName !== undefined && { restaurantName }),
+      vatNo: cleanVatNo,
+      panNo: cleanPanNo,
+      ...(email !== undefined && { email }),
+      ...(phone !== undefined && { phone }),
+      ...(address !== undefined && { address }),
+      ...(footerNote !== undefined && { footerNote }),
       ...(logoUrl && { logoUrl }),
       restaurant: restaurantId,
     };
