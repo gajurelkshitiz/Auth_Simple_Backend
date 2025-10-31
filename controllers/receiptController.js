@@ -11,7 +11,11 @@ const getRestaurantNameOrDefault = async (restaurantId) => {
 
 export const saveReceipt = async (req, res) => {
   try {
-    const { orderId } = req.body;
+    const {
+      orderId,
+      vatPercent: reqVat,
+      discountPercent: reqDiscount,
+    } = req.body;
 
     const order = await Order.findById(orderId)
       .populate("restaurant")
@@ -30,18 +34,20 @@ export const saveReceipt = async (req, res) => {
       0
     );
 
-    const discountAmount = order.discountPercent
-      ? (subtotal * order.discountPercent) / 100
-      : order.discountAmount || 0;
+    const discountPercent =
+      typeof reqDiscount === "number"
+        ? reqDiscount
+        : order.discountPercent || 0;
+    const vatPercent =
+      typeof reqVat === "number" ? reqVat : order.vatPercent || 0;
 
+    const discountAmount = (subtotal * discountPercent) / 100;
     const subtotalAfterDiscount = subtotal - discountAmount;
-
-    const vatAmount = order.vatPercent
-      ? (subtotalAfterDiscount * order.vatPercent) / 100
-      : order.vatAmount || 0;
-
+    const vatAmount = (subtotalAfterDiscount * vatPercent) / 100;
     const finalAmount = subtotalAfterDiscount + vatAmount;
 
+    order.discountPercent = discountPercent;
+    order.vatPercent = vatPercent;
     order.subtotal = subtotal;
     order.discountAmount = discountAmount;
     order.vatAmount = vatAmount;
@@ -62,9 +68,9 @@ export const saveReceipt = async (req, res) => {
         quantity: i.quantity,
       })),
       subtotal,
-      discountPercent: order.discountPercent,
+      discountPercent,
       discountAmount,
-      vatPercent: order.vatPercent,
+      vatPercent,
       vatAmount,
       finalAmount,
       paymentStatus: order.paymentStatus,
