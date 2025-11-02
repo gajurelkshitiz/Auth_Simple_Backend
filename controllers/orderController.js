@@ -6,7 +6,6 @@ import OrderCounter from "../models/orderCounter.js";
 import KOT from "../models/kot.js";
 import { printKOT } from "../utils/printKOT.js";
 import { io } from "../index.js";
-import Item from "../models/item.js";
 import { adjustStock } from "./stockController.js";
 
 const ensureRestaurant = (req, res) => {
@@ -35,17 +34,10 @@ function computeTotals(items = []) {
   return { totalAmount };
 }
 
-function applyPayment(
-  order,
-  paymentStatus,
-  customerName,
-  paymentMethod,
-  paymentBreakdown
-) {
+function applyPayment(order, paymentStatus, customerName, paymentMethod = {}) {
   const subtotal = Number(order.totalAmount) || 0;
   const discountPercent = Number(order.discountPercent || 0);
   const vatPercent = Number(order.vatPercent || 0);
-
   const discountAmount = (subtotal * discountPercent) / 100;
   const discountedBase = subtotal - discountAmount;
   const vatAmount = (discountedBase * vatPercent) / 100;
@@ -55,16 +47,8 @@ function applyPayment(
   order.vatAmount = vatAmount;
   order.finalAmount = finalAmount;
 
-  order.paymentMethod = paymentMethod || "cash";
-  if (paymentBreakdown) {
-    order.cashAmount = Number(paymentBreakdown.cashAmount || 0);
-    order.cardAmount = Number(paymentBreakdown.cardAmount || 0);
-    order.onlineAmount = Number(paymentBreakdown.onlineAmount || 0);
-  } else {
-    order.cashAmount = paymentMethod?.includes("cash") ? finalAmount : 0;
-    order.cardAmount = paymentMethod?.includes("card") ? finalAmount : 0;
-    order.onlineAmount = paymentMethod?.includes("online") ? finalAmount : 0;
-  }
+  if (!paymentMethod.method) paymentMethod.method = "cash";
+  order.paymentMethod = paymentMethod;
 
   if (paymentStatus === "Paid") {
     order.paidAmount = finalAmount;
@@ -146,12 +130,11 @@ export const createOrder = async (req, res) => {
       tableId,
       items,
       paymentStatus = "Due",
-      paymentMethod,
-      paymentBreakdown,
       customerName,
       note,
       vatPercent = 0,
       discountPercent = 0,
+      paymentMethod = {},
     } = req.body ?? {};
 
     if (!tableId || !mongoose.Types.ObjectId.isValid(tableId)) {
@@ -167,11 +150,10 @@ export const createOrder = async (req, res) => {
     }
 
     const areaId = table.area?._id ?? table.area;
-    if (!areaId) {
+    if (!areaId)
       return res
         .status(400)
         .json({ error: "Table has no valid area reference" });
-    }
 
     const orderId = await nextOrderIdForRestaurant(restaurantId);
     const { totalAmount } = computeTotals(items);
@@ -191,15 +173,10 @@ export const createOrder = async (req, res) => {
       adminId: req.user.userId,
     });
 
-    applyPayment(
-      order,
-      paymentStatus,
-      customerName,
-      paymentMethod,
-      paymentBreakdown
-    );
+    applyPayment(order, paymentStatus, customerName, paymentMethod);
     await order.save();
     await occupyTable(table._id, order._id);
+
     await adjustStock(items, false, restaurantId);
     await order.populate("items.item", "name");
 
@@ -291,14 +268,8 @@ export const updateOrder = async (req, res) => {
     if (!restaurantId) return;
 
     const { id } = req.params;
-    const {
-      items,
-      paymentStatus,
-      paymentMethod,
-      paymentBreakdown,
-      customerName,
-      note,
-    } = req.body ?? {};
+    const { items, paymentStatus, customerName, note, paymentMethod } =
+      req.body ?? {};
 
     const order = await Order.findOne({
       _id: id,
@@ -306,47 +277,18 @@ export const updateOrder = async (req, res) => {
     }).populate("table");
     if (!order) return res.status(404).json({ error: "Order not found" });
 
-    let addedItems = [];
-    let updatedItems = [];
-    let voidedItems = [];
-
     if (items && Array.isArray(items)) {
       if (!validateItems(items, res)) return;
-
-      const oldItemsMap = new Map(
-        order.items.map((it) => [it.item.toString(), it])
-      );
-      items.forEach((it) => {
-        const old = oldItemsMap.get(it.item.toString());
-        if (!old) {
-          addedItems.push(it);
-        } else if (
-          old.quantity !== it.quantity ||
-          old.unitName !== it.unitName
-        ) {
-          updatedItems.push({ oldItem: old, newItem: it });
-        }
-        oldItemsMap.delete(it.item.toString());
-      });
-      voidedItems = [...oldItemsMap.values()];
-
       await adjustStock(order.items, true, restaurantId);
       order.items = items;
       order.totalAmount = computeTotals(items).totalAmount;
       await adjustStock(items, false, restaurantId);
     }
 
-    if (paymentStatus) {
-      applyPayment(
-        order,
-        paymentStatus,
-        customerName,
-        paymentMethod,
-        paymentBreakdown
-      );
-    }
-
+    if (paymentStatus)
+      applyPayment(order, paymentStatus, customerName, paymentMethod);
     if (note !== undefined) order.note = note;
+
     await order.save();
 
     io.to(restaurantId.toString()).emit("order:updated", {
@@ -356,63 +298,6 @@ export const updateOrder = async (req, res) => {
       items: order.items,
       updatedAt: new Date(),
     });
-
-    const createKOT = async () => {
-      const kotItems = [];
-      addedItems.forEach((it) => {
-        kotItems.push({
-          item: it.item,
-          name: it.name,
-          unitName: it.unitName,
-          quantity: it.quantity,
-          changeType: "ADDED",
-        });
-      });
-      updatedItems.forEach((it) => {
-        kotItems.push({
-          item: it.newItem.item,
-          name: it.newItem.name || it.oldItem.name,
-          unitName: it.newItem.unitName,
-          oldQuantity: it.oldItem.quantity,
-          quantity: it.newItem.quantity,
-          changeType: "UPDATED",
-        });
-      });
-      voidedItems.forEach((it) => {
-        kotItems.push({
-          item: it.item,
-          name: it.name,
-          unitName: it.unitName,
-          quantity: it.quantity,
-          changeType: "VOIDED",
-        });
-      });
-      if (!kotItems.length) return;
-
-      const kot = await KOT.create({
-        restaurant: restaurantId,
-        table: order.table._id,
-        order: order._id,
-        type: "UPDATE",
-        items: kotItems,
-        createdBy: req.user.userId,
-        createdByRole: req.user.role,
-      });
-      try {
-        printKOT(await kot.populate(["table", "order"]));
-        io.to(restaurantId.toString()).emit("kot:update", {
-          type: "UPDATE",
-          table: order.table.name,
-          tableId: order.table._id,
-          orderId: order._id,
-          items: kotItems,
-          updatedAt: new Date(),
-        });
-      } catch (err) {
-        console.warn("[KOT print error]", err.message);
-      }
-    };
-    await createKOT();
 
     res.status(200).json({ message: "Order updated successfully", order });
   } catch (err) {
@@ -435,41 +320,12 @@ export const deleteOrder = async (req, res) => {
 
     await freeTable(order.table);
     await adjustStock(order.items, true, restaurantId);
-    await order.populate("items.item", "name");
 
     io.to(restaurantId.toString()).emit("order:deleted", {
       orderId: order._id,
       tableId: order.table,
       deletedAt: new Date(),
     });
-
-    const kot = await KOT.create({
-      restaurant: restaurantId,
-      table: order.table,
-      order: order._id,
-      type: "VOID",
-      items: order.items.map((it) => ({
-        item: it.item,
-        name: it.item?.name || undefined,
-        unitName: it.unitName,
-        quantity: it.quantity,
-      })),
-      createdBy: req.user.userId,
-      createdByRole: req.user.role,
-    });
-
-    try {
-      printKOT(await kot.populate(["table", "order"]));
-      io.to(restaurantId.toString()).emit("kot:void", {
-        type: "VOID",
-        tableId: order.table,
-        orderId: order._id,
-        items: order.items,
-        deletedAt: new Date(),
-      });
-    } catch (err) {
-      console.warn("[KOT print error]", err.message);
-    }
 
     res.status(200).json({ message: "Order deleted" });
   } catch (err) {
@@ -488,8 +344,7 @@ export const checkoutOrder = async (req, res) => {
       force = false,
       vatPercent = 0,
       discountPercent = 0,
-      paymentMethod,
-      paymentBreakdown,
+      paymentMethod = {},
     } = req.body ?? {};
 
     const order = await Order.findOne({
@@ -499,9 +354,9 @@ export const checkoutOrder = async (req, res) => {
     if (!order) return res.status(404).json({ error: "Order not found" });
 
     const subtotal = Number(order.totalAmount) || 0;
-    const discountAmount = (subtotal * Number(discountPercent || 0)) / 100;
+    const discountAmount = (subtotal * Number(discountPercent)) / 100;
     const discountedBase = subtotal - discountAmount;
-    const vatAmount = (discountedBase * Number(vatPercent || 0)) / 100;
+    const vatAmount = (discountedBase * Number(vatPercent)) / 100;
     const finalAmount = discountedBase + vatAmount;
 
     order.discountPercent = Number(discountPercent);
@@ -520,9 +375,8 @@ export const checkoutOrder = async (req, res) => {
     order.checkedOut = true;
     order.checkedOutAt = new Date();
 
-    if (hasDue && force) {
-      applyPayment(order, "Paid", null, paymentMethod, paymentBreakdown);
-    } else {
+    if (hasDue && force) applyPayment(order, "Paid", null, paymentMethod);
+    else {
       const alreadyPaid = Number(order.paidAmount) || 0;
       const due = finalAmount - alreadyPaid;
       order.dueAmount = due > 0 ? due : 0;
@@ -558,8 +412,7 @@ export const bulkCheckout = async (req, res) => {
       force = false,
       vatPercent = 0,
       discountPercent = 0,
-      paymentMethod,
-      paymentBreakdown,
+      paymentMethod = {},
     } = req.body || {};
     if (!Array.isArray(ids) || ids.length === 0)
       return res.status(400).json({ error: "ids (string[]) is required" });
@@ -579,14 +432,20 @@ export const bulkCheckout = async (req, res) => {
           restaurant: restaurantId,
         }).populate("table");
         if (!order) {
-          results.push({ id, status: "not found" });
           failed++;
+          results.push({ id, ok: false, reason: "Order not found" });
           continue;
         }
+        if (order.checkedOut === true) {
+          ok++;
+          results.push({ id, ok: true, reason: "Already checked out" });
+          continue;
+        }
+
         const subtotal = Number(order.totalAmount) || 0;
-        const discountAmount = (subtotal * Number(discountPercent || 0)) / 100;
+        const discountAmount = (subtotal * Number(discountPercent)) / 100;
         const discountedBase = subtotal - discountAmount;
-        const vatAmount = (discountedBase * Number(vatPercent || 0)) / 100;
+        const vatAmount = (discountedBase * Number(vatPercent)) / 100;
         const finalAmount = discountedBase + vatAmount;
 
         order.discountPercent = Number(discountPercent);
@@ -598,23 +457,32 @@ export const bulkCheckout = async (req, res) => {
         const hasDue =
           Number(order.dueAmount ?? 0) > 0 || order.paymentStatus !== "Paid";
         if (hasDue && !force) {
-          results.push({ id, status: "due" });
           failed++;
+          results.push({
+            id,
+            ok: false,
+            reason: "Has due; require force=true",
+          });
           continue;
         }
 
         order.checkedOut = true;
         order.checkedOutAt = new Date();
-        if (hasDue && force)
-          applyPayment(order, "Paid", null, paymentMethod, paymentBreakdown);
+
+        if (hasDue && force) applyPayment(order, "Paid", null, paymentMethod);
         else {
           const alreadyPaid = Number(order.paidAmount) || 0;
           const due = finalAmount - alreadyPaid;
           order.dueAmount = due > 0 ? due : 0;
           if (order.dueAmount <= 0) order.paymentStatus = "Paid";
         }
+
         await order.save();
         await freeTable(order.table);
+
+        ok++;
+        results.push({ id, ok: true });
+
         io.to(restaurantId.toString()).emit("order:checkedOut", {
           orderId: order._id,
           tableId: order.table._id,
@@ -623,18 +491,20 @@ export const bulkCheckout = async (req, res) => {
           discountPercent,
           finalAmount,
         });
-        results.push({ id, status: "ok" });
-        ok++;
-      } catch (err) {
-        console.error("[ORDER bulkCheckout item]", err);
-        results.push({ id, status: "error" });
+      } catch (e) {
         failed++;
+        results.push({ id, ok: false, reason: e?.message || "Error" });
       }
     }
 
-    return res.status(200).json({ ok, failed, results });
+    return res.status(200).json({
+      ok,
+      failed,
+      results,
+      message: `Checked out ${ok} • Failed ${failed}`,
+    });
   } catch (err) {
     console.error("[ORDER bulkCheckout]", err);
-    return res.status(500).json({ error: "Internal Server Error" });
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };
