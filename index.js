@@ -18,6 +18,7 @@ import kotRouter from "./routes/kotRoute.js";
 import stockRouter from "./routes/stockRoute.js";
 import restaurantSettingsRoute from "./routes/restaurantSettingsRoute.js";
 import receiptRouter from "./routes/receiptRoute.js";
+import categoryRouter from "./routes/categoryRoute.js";
 
 const app = express();
 app.use(
@@ -54,6 +55,7 @@ app.use((err, _req, res, _next) => {
 });
 
 app.use("/api/v1/receipts", receiptRouter);
+app.use("/api/v1/categories", categoryRouter);
 
 const port = process.env.PORT || 3000;
 

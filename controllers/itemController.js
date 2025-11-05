@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import Item from "../models/item.js";
+import Category from "../models/category.js";
 
 const isAdmin = (role) => role === "admin";
 const isManager = (role) => role === "manager";
@@ -55,7 +56,7 @@ export const createItem = async (req, res) => {
     const restaurantId = ensureRestaurant(req, res);
     if (!restaurantId) return;
 
-    const { name, description, available } = req.body;
+    const { name, description, available, categoryId } = req.body;
     if (!name || !name.trim()) {
       return res.status(400).json({ error: "Item name is required" });
     }
@@ -70,6 +71,17 @@ export const createItem = async (req, res) => {
       });
     }
 
+    let categoryDoc = null;
+    if (categoryId) {
+      categoryDoc = await Category.findOne({
+        _id: categoryId,
+        restaurant: restaurantId,
+      });
+      if (!categoryDoc) {
+        return res.status(400).json({ error: "Invalid category ID" });
+      }
+    }
+
     const imagePath = req.file ? `/uploads/${req.file.filename}` : undefined;
 
     const item = await Item.create({
@@ -77,6 +89,7 @@ export const createItem = async (req, res) => {
       description: (description ?? "").toString(),
       image: imagePath,
       variants,
+      category: categoryDoc ? categoryDoc._id : null,
       available:
         typeof available === "string"
           ? available.toLowerCase() === "true"
@@ -104,7 +117,9 @@ export const getItems = async (req, res) => {
       filter.name = { $regex: q.toString().trim(), $options: "i" };
     }
 
-    const items = await Item.find(filter).sort({ createdAt: -1 });
+    const items = await Item.find(filter)
+      .populate("category", "name")
+      .sort({ createdAt: -1 });
     res.status(200).json({ items });
   } catch (err) {
     console.error("[ITEM list]", err);
@@ -118,7 +133,10 @@ export const getItemById = async (req, res) => {
     if (!restaurantId) return;
 
     const { id } = req.params;
-    const item = await Item.findOne({ _id: id, restaurant: restaurantId });
+    const item = await Item.findOne({
+      _id: id,
+      restaurant: restaurantId,
+    }).populate("category", "name");
     if (!item) return res.status(404).json({ error: "Item not found" });
 
     res.status(200).json({ item });
@@ -144,7 +162,18 @@ export const updateItem = async (req, res) => {
     const existing = await Item.findOne({ _id: id, restaurant: restaurantId });
     if (!existing) return res.status(404).json({ error: "Item not found" });
 
-    const { name, description, available, removeImage } = req.body;
+    const { name, description, available, removeImage, categoryId } = req.body;
+
+    if (categoryId) {
+      const categoryDoc = await Category.findOne({
+        _id: categoryId,
+        restaurant: restaurantId,
+      });
+      if (!categoryDoc) {
+        return res.status(400).json({ error: "Invalid category ID" });
+      }
+      existing.category = categoryDoc._id;
+    }
 
     let newImagePath = existing.image;
     if (req.file) {
@@ -214,6 +243,35 @@ export const deleteItem = async (req, res) => {
     res.status(200).json({ message: "Item deleted" });
   } catch (err) {
     console.error("[ITEM delete]", err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+export const getItemsByCategory = async (req, res) => {
+  try {
+    const restaurantId = req.user?.restaurantId;
+    if (!restaurantId) {
+      return res
+        .status(400)
+        .json({ error: "Restaurant context missing in token" });
+    }
+
+    const { categoryId } = req.params;
+
+    const filter = { restaurant: restaurantId };
+    if (categoryId === "null") {
+      filter.$or = [{ category: { $exists: false } }, { category: null }];
+    } else {
+      filter.category = categoryId;
+    }
+
+    const items = await Item.find(filter)
+      .populate("category", "name")
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({ items });
+  } catch (err) {
+    console.error("[ITEM getByCategory]", err);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };

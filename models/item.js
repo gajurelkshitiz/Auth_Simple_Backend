@@ -4,7 +4,6 @@ const variantSchema = new mongoose.Schema(
   {
     unit: { type: String, required: true, trim: true },
     price: { type: Number, required: true, min: 0 },
-
     stockQuantity: { type: Number, default: 0 },
     autoStock: { type: Boolean, default: false },
     alertThreshold: { type: Number, default: 0 },
@@ -24,6 +23,13 @@ const itemSchema = new mongoose.Schema(
         validator: (arr) => Array.isArray(arr) && arr.length > 0,
         message: "At least one unit/price is required",
       },
+    },
+
+    category: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Category",
+      required: false,
+      default: null,
     },
 
     available: { type: Boolean, default: true },

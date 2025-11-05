@@ -5,6 +5,7 @@ import {
   getItemById,
   updateItem,
   deleteItem,
+  getItemsByCategory,
 } from "../controllers/itemController.js";
 import { authMiddleware } from "../middleware/authMiddleware.js";
 import { upload } from "../middleware/uploads.js";
@@ -12,6 +13,11 @@ import { upload } from "../middleware/uploads.js";
 const router = express.Router();
 
 router.get("/", authMiddleware(["admin", "manager", "staff"]), getItems);
+router.get(
+  "/by-category/:categoryId",
+  authMiddleware(["admin", "manager", "staff"]),
+  getItemsByCategory
+);
 router.get("/:id", authMiddleware(["admin", "manager", "staff"]), getItemById);
 
 router.post(
