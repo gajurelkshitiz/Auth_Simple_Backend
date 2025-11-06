@@ -251,18 +251,22 @@ export const getItemsByCategory = async (req, res) => {
   try {
     const { categoryId } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(categoryId)) {
+    if (!categoryId.match(/^[a-f\d]{24}$/i)) {
       return res.status(400).json({ error: "Invalid category ID format" });
     }
 
-    const restaurantId = req.user?.restaurantId;
-    const query = { category: categoryId };
-    if (restaurantId) query.restaurant = restaurantId;
+    const category = await Category.findById(categoryId);
+    if (!category) {
+      return res.status(404).json({ error: "Category not found" });
+    }
+    const items = await Item.find({ category: categoryId }).populate(
+      "category",
+      "name"
+    );
 
-    const items = await Item.find(query).populate("category", "name");
     res.status(200).json({ items });
   } catch (err) {
-    console.error("[ITEM FETCH ERROR]", err);
+    console.error("[GET ITEMS BY CATEGORY ERROR]", err);
     res.status(500).json({ error: "Internal server error" });
   }
 };
