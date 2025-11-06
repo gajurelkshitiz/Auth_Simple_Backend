@@ -256,13 +256,17 @@ export const getItemsByCategory = async (req, res) => {
         .json({ error: "Restaurant context missing in token" });
     }
 
-    const { categoryId } = req.params;
+    let categoryId = req.params.categoryId ?? req.query.categoryId;
 
     const filter = { restaurant: restaurantId };
-    if (categoryId === "null") {
+    if (!categoryId || categoryId === "null") {
       filter.$or = [{ category: { $exists: false } }, { category: null }];
     } else {
-      filter.category = categoryId;
+      try {
+        filter.category = new mongoose.Types.ObjectId(categoryId);
+      } catch {
+        return res.status(400).json({ error: "Invalid category ID format" });
+      }
     }
 
     const items = await Item.find(filter)
