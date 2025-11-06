@@ -249,38 +249,20 @@ export const deleteItem = async (req, res) => {
 
 export const getItemsByCategory = async (req, res) => {
   try {
-    const restaurantId = req.user?.restaurantId;
-    if (!restaurantId) {
-      console.warn("[ITEM] Missing restaurant context in token");
-      return res
-        .status(400)
-        .json({ error: "Restaurant context missing in token" });
-    }
-
     const { categoryId } = req.params;
-    const filter = { restaurant: restaurantId };
 
-    if (
-      categoryId &&
-      categoryId !== "all" &&
-      categoryId !== "null" &&
-      categoryId !== "undefined"
-    ) {
-      if (mongoose.isValidObjectId(categoryId)) {
-        filter.category = new mongoose.Types.ObjectId(categoryId);
-      } else {
-        console.warn("[ITEM] Invalid category ID format:", categoryId);
-      }
+    if (!mongoose.Types.ObjectId.isValid(categoryId)) {
+      return res.status(400).json({ error: "Invalid category ID format" });
     }
 
-    const items = await Item.find(filter)
-      .populate("category", "name")
-      .sort({ createdAt: -1 })
-      .lean();
+    const restaurantId = req.user?.restaurantId;
+    const query = { category: categoryId };
+    if (restaurantId) query.restaurant = restaurantId;
 
-    return res.status(200).json({ items });
-  } catch (error) {
-    console.error("[ITEM getItemsByCategory]", error);
-    return res.status(500).json({ error: "Internal server error" });
+    const items = await Item.find(query).populate("category", "name");
+    res.status(200).json({ items });
+  } catch (err) {
+    console.error("[ITEM FETCH ERROR]", err);
+    res.status(500).json({ error: "Internal server error" });
   }
 };
