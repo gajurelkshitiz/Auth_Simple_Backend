@@ -38,6 +38,9 @@ const parseVariants = (raw) => {
     .map((x) => ({
       unit: (x?.unit ?? "").toString().trim(),
       price: Number(x?.price),
+      stockQuantity: Number(x?.stockQuantity) || 0,
+      autoStock: Boolean(x?.autoStock),
+      alertThreshold: Number(x?.alertThreshold) || 0,
     }))
     .filter((x) => x.unit && !Number.isNaN(x.price) && x.price >= 0);
 
@@ -99,7 +102,12 @@ export const createItem = async (req, res) => {
       createdByRole: req.user.role,
     });
 
-    res.status(201).json({ message: "Item created", item });
+    const itemPopulated = await Item.findById(item._id).populate(
+      "category",
+      "name"
+    );
+
+    res.status(201).json({ message: "Item created", item: itemPopulated });
   } catch (err) {
     console.error("[ITEM create]", err);
     res.status(500).json({ error: "Internal Server Error" });
@@ -169,9 +177,8 @@ export const updateItem = async (req, res) => {
         _id: categoryId,
         restaurant: restaurantId,
       });
-      if (!categoryDoc) {
+      if (!categoryDoc)
         return res.status(400).json({ error: "Invalid category ID" });
-      }
       existing.category = categoryDoc._id;
     }
 
@@ -193,23 +200,27 @@ export const updateItem = async (req, res) => {
     const parsedVariants = parseVariants(
       req.body.variants ?? req.body["variants[]"] ?? req.body.variant
     );
-    if (parsedVariants) {
-      existing.variants = parsedVariants;
-    }
+    if (parsedVariants) existing.variants = parsedVariants;
 
     if (name !== undefined) existing.name = name.toString().trim();
     if (description !== undefined)
       existing.description = description.toString();
-    if (available !== undefined) {
+    if (available !== undefined)
       existing.available =
         typeof available === "string"
           ? available.toLowerCase() === "true"
           : Boolean(available);
-    }
+
     existing.image = newImagePath;
 
     const updated = await existing.save();
-    res.status(200).json({ message: "Item updated", item: updated });
+
+    const updatedPopulated = await Item.findById(updated._id).populate(
+      "category",
+      "name"
+    );
+
+    res.status(200).json({ message: "Item updated", item: updatedPopulated });
   } catch (err) {
     console.error("[ITEM update]", err);
     res.status(500).json({ error: "Internal Server Error" });
@@ -256,13 +267,11 @@ export const getItemsByCategory = async (req, res) => {
     }
 
     const category = await Category.findById(categoryId);
-    if (!category) {
-      return res.status(404).json({ error: "Category not found" });
-    }
-    const items = await Item.find({ category: categoryId }).populate(
-      "category",
-      "name"
-    );
+    if (!category) return res.status(404).json({ error: "Category not found" });
+
+    const items = await Item.find({ category: categoryId })
+      .populate("category", "name")
+      .sort({ createdAt: -1 });
 
     res.status(200).json({ items });
   } catch (err) {

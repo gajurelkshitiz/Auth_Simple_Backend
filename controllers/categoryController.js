@@ -46,9 +46,10 @@ export const getCategories = async (req, res) => {
     const restaurantId = ensureRestaurant(req, res);
     if (!restaurantId) return;
 
-    const categories = await Category.find({ restaurant: restaurantId }).sort({
-      name: 1,
-    });
+    const categories = await Category.find({ restaurant: restaurantId })
+      .sort({ name: 1 })
+      .select("_id name description");
+
     res.status(200).json({ categories });
   } catch (err) {
     console.error("[CATEGORY list]", err);
