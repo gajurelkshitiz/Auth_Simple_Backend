@@ -78,6 +78,9 @@ export const createTable = async (req, res) => {
       createdByRole: req.user.role,
     });
 
+    const io = req.app.get("io");
+    io.to(restaurantId.toString()).emit("tableCreated", { table });
+
     res.status(201).json({ message: "Table created", table });
   } catch (err) {
     console.error("[TABLE create]", err);
@@ -203,6 +206,9 @@ export const updateTable = async (req, res) => {
 
     if (!updated) return res.status(404).json({ error: "Table not found" });
 
+    const io = req.app.get("io");
+    io.to(restaurantId.toString()).emit("tableUpdated", { table: updated });
+
     res.status(200).json({ message: "Table updated", table: updated });
   } catch (err) {
     console.error("[TABLE update]", err);
@@ -234,6 +240,9 @@ export const deleteTable = async (req, res) => {
     if (!deleted) return res.status(404).json({ error: "Table not found" });
 
     deleteFileIfExists(deleted.image);
+
+    const io = req.app.get("io");
+    io.to(restaurantId.toString()).emit("tableDeleted", { tableId: id });
 
     res.status(200).json({ message: "Table deleted" });
   } catch (err) {

@@ -71,8 +71,22 @@ export const login = async (req, res) => {
           : null,
       },
       process.env.JWT_SECRET,
-      { expiresIn: "15d" }
+      { expiresIn: "7d" }
     );
+
+    try {
+      const io = req.app.get("io");
+      if (io && populatedUser.restaurant?._id) {
+        io.to(populatedUser.restaurant._id.toString()).emit("userLoggedIn", {
+          userId: populatedUser._id,
+          restaurantId: populatedUser.restaurant._id.toString(),
+          role: populatedUser.role.name,
+          message: "New user logged in; refresh data if needed",
+        });
+      }
+    } catch (wsErr) {
+      console.warn("[WS LOGIN NOTIFY FAILED]", wsErr.message);
+    }
 
     return res.status(200).json({
       token,
@@ -84,6 +98,25 @@ export const login = async (req, res) => {
     });
   } catch (err) {
     console.error("[LOGIN ERROR]", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+export const logout = async (req, res) => {
+  try {
+    const restaurantId = req.user?.restaurantId;
+    const userId = req.user?.userId;
+
+    const io = req.app.get("io");
+    if (io && restaurantId) {
+      io.to(restaurantId.toString()).emit("userLoggedOut", {
+        userId,
+        message: "User logged out; clear frontend state",
+      });
+    }
+
+    return res.status(200).json({ message: "Logout successful" });
+  } catch (err) {
+    console.error("[LOGOUT ERROR]", err);
     return res.status(500).json({ error: "Internal Server Error" });
   }
 };

@@ -1,4 +1,5 @@
 import Restaurant from "../models/restaurant.js";
+import { emitToRestaurant } from "../utils/socket.js";
 
 const isSuper = (role) => role === "super-admin";
 const isAdmin = (role) => role === "admin";
@@ -28,6 +29,8 @@ export const createRestaurant = async (req, res) => {
     }
 
     const restaurant = await Restaurant.create({ name, address, phone });
+
+    emitToRestaurant(req, restaurant._id, "restaurantCreated", { restaurant });
     res
       .status(201)
       .json({ message: "Restaurant created successfully", restaurant });
@@ -100,11 +103,9 @@ export const updateRestaurant = async (req, res) => {
           .json({ error: "Admins can only update their own restaurant" });
       }
     } else {
-      return res
-        .status(403)
-        .json({
-          error: "Only super-admin or admin (own) can update a restaurant",
-        });
+      return res.status(403).json({
+        error: "Only super-admin or admin (own) can update a restaurant",
+      });
     }
 
     const updates = { ...req.body };
@@ -116,6 +117,10 @@ export const updateRestaurant = async (req, res) => {
     if (!updatedRestaurant) {
       return res.status(404).json({ error: "Restaurant not found" });
     }
+
+    emitToRestaurant(req, updatedRestaurant._id, "restaurant:updated", {
+      restaurant: updatedRestaurant,
+    });
 
     res.status(200).json({
       message: "Restaurant updated successfully",
@@ -141,6 +146,10 @@ export const deleteRestaurant = async (req, res) => {
     if (!deletedRestaurant) {
       return res.status(404).json({ error: "Restaurant not found" });
     }
+
+    emitToRestaurant(req, deletedRestaurant._id, "restaurant:deleted", {
+      restaurantId: id,
+    });
 
     res.status(200).json({
       message: "Restaurant deleted successfully",

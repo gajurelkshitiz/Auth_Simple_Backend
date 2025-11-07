@@ -2,6 +2,7 @@ import Role from "../models/role.js";
 import User from "../models/user.js";
 import bcrypt from "bcryptjs";
 import Restaurant from "../models/restaurant.js";
+import { emitToRestaurant } from "../utils/socket.js";
 
 const R = {
   SUPER: "super-admin",
@@ -85,6 +86,11 @@ export const createUser = async (req, res) => {
       .populate("role", "name")
       .populate("restaurant", "name address");
 
+    if (restaurantId) {
+      emitToRestaurant(req, restaurantId, "userCreated", {
+        user: populatedUser,
+      });
+    }
     return res
       .status(201)
       .json({ message: "User created successfully", user: populatedUser });
@@ -167,6 +173,9 @@ export const assignRestaurant = async (req, res) => {
       .populate("restaurant", "name address");
 
     if (!user) return res.status(404).json({ error: "User not found" });
+
+    emitToRestaurant(req, restaurantId, "userUpdated", { user });
+
     return res.status(200).json({ message: "Restaurant assigned", user });
   } catch (err) {
     console.error(err);

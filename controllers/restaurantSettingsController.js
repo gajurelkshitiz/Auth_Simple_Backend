@@ -1,6 +1,7 @@
 import RestaurantSettings from "../models/restaurantSettings.js";
 import Restaurant from "../models/restaurant.js";
 import path from "path";
+import { emitToRestaurant } from "../utils/socket.js";
 
 export const getRestaurantSettings = async (req, res) => {
   try {
@@ -99,6 +100,9 @@ export const updateRestaurantSettings = async (req, res) => {
       { $set: updates },
       { new: true, upsert: true }
     );
+    emitToRestaurant(req, restaurantId, "restaurantSettingsUpdated", {
+      settings,
+    });
 
     res.status(200).json({
       message: "Restaurant settings updated successfully",

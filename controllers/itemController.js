@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import Item from "../models/item.js";
 import Category from "../models/category.js";
+import { emitToRestaurant } from "../utils/socket.js";
 
 const isAdmin = (role) => role === "admin";
 const isManager = (role) => role === "manager";
@@ -106,6 +107,7 @@ export const createItem = async (req, res) => {
       "category",
       "name"
     );
+    emitToRestaurant(req, restaurantId, "itemCreated", { item: itemPopulated });
 
     res.status(201).json({ message: "Item created", item: itemPopulated });
   } catch (err) {
@@ -220,6 +222,9 @@ export const updateItem = async (req, res) => {
       "name"
     );
 
+    emitToRestaurant(req, restaurantId, "itemUpdated", {
+      item: updatedPopulated,
+    });
     res.status(200).json({ message: "Item updated", item: updatedPopulated });
   } catch (err) {
     console.error("[ITEM update]", err);
@@ -251,6 +256,8 @@ export const deleteItem = async (req, res) => {
       safeUnlink(abs);
     }
 
+    emitToRestaurant(req, restaurantId, "itemDeleted", { itemId: id });
+
     res.status(200).json({ message: "Item deleted" });
   } catch (err) {
     console.error("[ITEM delete]", err);
@@ -269,7 +276,10 @@ export const getItemsByCategory = async (req, res) => {
     const category = await Category.findById(categoryId);
     if (!category) return res.status(404).json({ error: "Category not found" });
 
-    const items = await Item.find({ category: categoryId })
+    const items = await Item.find({
+      category: categoryId,
+      restaurant: req.user.restaurantId,
+    })
       .populate("category", "name")
       .sort({ createdAt: -1 });
 

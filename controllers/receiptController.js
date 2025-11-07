@@ -1,6 +1,7 @@
 import Receipt from "../models/receipt.js";
 import Order from "../models/order.js";
 import RestaurantSettings from "../models/restaurantSettings.js";
+import { emitToRestaurant } from "../utils/socket.js";
 
 const getRestaurantNameOrDefault = async (restaurantId) => {
   const settings = await RestaurantSettings.findOne({
@@ -82,6 +83,10 @@ export const saveReceipt = async (req, res) => {
       { $set: receiptData },
       { new: true, upsert: true }
     );
+    emitToRestaurant(req, order.restaurant._id, "receiptSaved", {
+      orderId: order._id,
+      receipt: savedReceipt,
+    });
 
     res.status(200).json(savedReceipt);
   } catch (err) {

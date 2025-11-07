@@ -1,4 +1,5 @@
 import KOT from "../models/kot.js";
+import { emitToRestaurant } from "../utils/socket.js";
 
 export const getKOTs = async (req, res) => {
   try {

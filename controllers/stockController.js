@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import Item from "../models/item.js";
 import Stock from "../models/stock.js";
 import StockHistory from "../models/stockHistory.js";
+import { emitToRestaurant } from "../utils/socket.js";
 
 const isAdmin = (role) => role === "admin";
 const isManager = (role) => role === "manager";
@@ -107,6 +108,7 @@ export const createStock = async (req, res) => {
     });
 
     await stock.save();
+    emitToRestaurant(req, restaurantId, "stockCreated", { stock });
     console.log("[createStock] Stock created:", stock);
     res.status(201).json({ message: "Stock created successfully", stock });
   } catch (error) {
@@ -205,6 +207,7 @@ export const updateStock = async (req, res) => {
     stock.item = linkedItem ? linkedItem._id : stock.item;
 
     await stock.save();
+    emitToRestaurant(req, restaurantId, "stockUpdated", { stock });
     res.json({ message: "Stock updated successfully", stock });
   } catch (error) {
     console.error("Error updating stock:", error);
@@ -230,7 +233,7 @@ export const deleteStock = async (req, res) => {
       restaurant: restaurantId,
     });
     if (!deleted) return res.status(404).json({ error: "Stock not found" });
-
+    emitToRestaurant(req, restaurantId, "stockDeleted", { stockId: id });
     res.status(200).json({ message: "Stock deleted" });
   } catch (err) {
     console.error("[STOCK delete]", err);
@@ -263,7 +266,10 @@ export const addStockPurchase = async (req, res) => {
 
     stock.quantity += quantity;
     await stock.save();
-
+    emitToRestaurant(req, restaurantId, "stockPurchased", {
+      stock,
+      historyEntry,
+    });
     res
       .status(200)
       .json({ message: "Purchase added successfully", stock, historyEntry });
@@ -300,6 +306,8 @@ export const manualDecrementStock = async (req, res) => {
       quantityAdded: -Math.abs(quantity),
       note: note || "Manual decrement",
     });
+
+    emitToRestaurant(req, restaurantId, "stockDecremented", { stock });
 
     res.status(200).json({ message: "Stock decremented", stock });
   } catch (err) {

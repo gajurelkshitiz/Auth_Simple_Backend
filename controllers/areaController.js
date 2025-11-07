@@ -52,6 +52,11 @@ export const createArea = async (req, res) => {
       createdByRole: req.user.role,
     });
 
+    const io = req.app.get("io");
+    if (restaurantId) {
+      io.to(restaurantId.toString()).emit("areaCreated", { area });
+    }
+
     res.status(201).json({ message: "Area created", area });
   } catch (err) {
     console.error("[AREA create]", err);
@@ -137,6 +142,9 @@ export const updateArea = async (req, res) => {
 
     const updated = await existing.save();
 
+    const io = req.app.get("io");
+    io.to(restaurantId.toString()).emit("areaUpdated", { area: updated });
+
     res.status(200).json({ message: "Area updated", area: updated });
   } catch (err) {
     console.error("[AREA update]", err);
@@ -170,6 +178,9 @@ export const deleteArea = async (req, res) => {
       );
       safeUnlink(absPath);
     }
+
+    const io = req.app.get("io");
+    io.to(restaurantId.toString()).emit("areaDeleted", { areaId: id });
 
     res.status(200).json({ message: "Area deleted" });
   } catch (err) {
