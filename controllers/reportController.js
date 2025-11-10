@@ -63,11 +63,21 @@ export const getTopItems = async (req, res) => {
         $group: {
           _id: "$items.name",
           totalQuantity: { $sum: "$items.quantity" },
-          totalRevenue: { $sum: "$items.price" },
+          totalRevenue: {
+            $sum: { $multiply: ["$items.price", "$items.quantity"] },
+          },
         },
       },
-      { $sort: { totalRevenue: -1 } },
+      { $sort: { totalQuantity: -1 } }, // sort by quantity sold
       { $limit: 10 },
+      {
+        $project: {
+          _id: 0,
+          name: "$_id",
+          totalQuantity: 1,
+          totalRevenue: 1,
+        },
+      },
     ]);
 
     res.json(topItems);
@@ -107,7 +117,9 @@ export const getSalesByCategory = async (req, res) => {
       {
         $group: {
           _id: "$category.name",
-          totalSales: { $sum: "$items.price" },
+          totalSales: {
+            $sum: { $multiply: ["$items.price", "$items.quantity"] },
+          },
           totalQuantity: { $sum: "$items.quantity" },
         },
       },
