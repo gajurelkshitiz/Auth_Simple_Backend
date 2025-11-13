@@ -312,3 +312,37 @@ export const getDistinctQuantities = async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
+export const getDistinctUnits = async (req, res) => {
+  try {
+    const restaurantId = req.user?.restaurantId;
+    if (!restaurantId) {
+      return res.status(400).json({ error: "Restaurant context missing" });
+    }
+
+    const result = await Item.aggregate([
+      { $match: { restaurant: new mongoose.Types.ObjectId(restaurantId) } },
+      { $unwind: "$variants" },
+      {
+        $group: {
+          _id: null,
+          units: { $addToSet: "$variants.unit" },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          units: 1,
+        },
+      },
+    ]);
+
+    const data = result[0] || { units: [] };
+
+    res.status(200).json({
+      units: data.units.sort(),
+    });
+  } catch (err) {
+    console.error("[GET DISTINCT UNITS]", err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};

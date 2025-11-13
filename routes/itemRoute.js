@@ -7,6 +7,7 @@ import {
   deleteItem,
   getItemsByCategory,
   getDistinctQuantities,
+  getDistinctUnits,
 } from "../controllers/itemController.js";
 import { authMiddleware } from "../middleware/authMiddleware.js";
 import { upload } from "../middleware/uploads.js";
@@ -35,5 +36,6 @@ router.put(
 );
 router.delete("/:id", authMiddleware(["admin", "manager"]), deleteItem);
 router.get("/quantities", authMiddleware, getDistinctQuantities);
+router.get("/distinct-units", authMiddleware, getDistinctUnits);
 
 export default router;
