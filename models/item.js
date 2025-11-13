@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 const variantSchema = new mongoose.Schema(
   {
     unit: { type: String, required: true, trim: true },
-    quantity: { type: Number, required: true, min: 0 },
+    quantity: { type: String, required: true, min: 0 },
     price: { type: Number, required: true, min: 0 },
     stockQuantity: { type: Number, default: 0 },
     autoStock: { type: Boolean, default: false },

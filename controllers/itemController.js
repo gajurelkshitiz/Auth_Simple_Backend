@@ -38,7 +38,7 @@ const parseVariants = (raw) => {
   const cleaned = v
     .map((x) => ({
       unit: (x?.unit ?? "").toString().trim(),
-      quantity: Number(x?.quantity) || 0,
+      quantity: (x?.quantity ?? "").toString().trim(),
       price: Number(x?.price),
       stockQuantity: Number(x?.stockQuantity) || 0,
       autoStock: Boolean(x?.autoStock),
@@ -46,7 +46,7 @@ const parseVariants = (raw) => {
       hasIngredient: Boolean(x?.hasIngredient),
     }))
     .filter(
-      (x) => x.unit && !Number.isNaN(x.price) && x.price >= 0 && x.quantity >= 0
+      (x) => x.unit && x.quantity && !Number.isNaN(x.price) && x.price >= 0
     );
 
   return cleaned.length ? cleaned : null;
@@ -291,5 +291,24 @@ export const getItemsByCategory = async (req, res) => {
   } catch (err) {
     console.error("[GET ITEMS BY CATEGORY ERROR]", err);
     res.status(500).json({ error: "Internal server error" });
+  }
+};
+export const getDistinctQuantities = async (req, res) => {
+  try {
+    const restaurantId = ensureRestaurant(req, res);
+    if (!restaurantId) return;
+
+    const quantities = await Item.aggregate([
+      { $match: { restaurant: new mongoose.Types.ObjectId(restaurantId) } },
+      { $unwind: "$variants" },
+      { $group: { _id: "$variants.quantity" } },
+      { $project: { _id: 0, quantity: "$_id" } },
+      { $sort: { quantity: 1 } },
+    ]);
+
+    res.status(200).json({ quantities: quantities.map((q) => q.quantity) });
+  } catch (err) {
+    console.error("[GET DISTINCT QUANTITIES]", err);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };
