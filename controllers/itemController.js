@@ -38,12 +38,16 @@ const parseVariants = (raw) => {
   const cleaned = v
     .map((x) => ({
       unit: (x?.unit ?? "").toString().trim(),
+      quantity: Number(x?.quantity) || 0,
       price: Number(x?.price),
       stockQuantity: Number(x?.stockQuantity) || 0,
       autoStock: Boolean(x?.autoStock),
       alertThreshold: Number(x?.alertThreshold) || 0,
+      hasIngredient: Boolean(x?.hasIngredient),
     }))
-    .filter((x) => x.unit && !Number.isNaN(x.price) && x.price >= 0);
+    .filter(
+      (x) => x.unit && !Number.isNaN(x.price) && x.price >= 0 && x.quantity >= 0
+    );
 
   return cleaned.length ? cleaned : null;
 };
@@ -71,7 +75,7 @@ export const createItem = async (req, res) => {
     if (!variants) {
       return res.status(400).json({
         error:
-          "Invalid variants. Send an array of {unit, price}. For multipart, send JSON string in 'variants'.",
+          "Invalid variants. Send an array of {unit,quantity, price, hasIngredient}. For multipart, send JSON string in 'variants'.",
       });
     }
 
