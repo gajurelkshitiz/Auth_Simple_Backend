@@ -1,4 +1,5 @@
 import fs from "fs";
+import mongoose from "mongoose";
 import path from "path";
 import Item from "../models/item.js";
 import Category from "../models/category.js";
@@ -25,6 +26,7 @@ const safeUnlink = (filePath) => {
 
 const parseVariants = (raw) => {
   if (!raw) return null;
+
   let v = raw;
   if (typeof raw === "string") {
     try {
@@ -33,20 +35,31 @@ const parseVariants = (raw) => {
       return null;
     }
   }
+
   if (!Array.isArray(v)) return null;
 
   const cleaned = v
-    .map((x) => ({
-      unit: (x?.unit ?? "").toString().trim(),
-      quantity: (x?.quantity ?? "").toString().trim(),
-      price: Number(x?.price),
-      stockQuantity: Number(x?.stockQuantity) || 0,
-      autoStock: Boolean(x?.autoStock),
-      alertThreshold: Number(x?.alertThreshold) || 0,
-      hasIngredient: Boolean(x?.hasIngredient),
-    }))
+    .map((x) => {
+      const quantity = Number(x?.quantity);
+      const price = Number(x?.price);
+
+      return {
+        unit: (x?.unit ?? "").toString().trim(),
+        quantity: Number.isNaN(quantity) ? null : quantity,
+        price: Number.isNaN(price) ? null : price,
+        stockQuantity: Number(x?.stockQuantity) || 0,
+        autoStock: Boolean(x?.autoStock),
+        alertThreshold: Number(x?.alertThreshold) || 0,
+        hasIngredient: Boolean(x?.hasIngredient),
+      };
+    })
     .filter(
-      (x) => x.unit && x.quantity && !Number.isNaN(x.price) && x.price >= 0
+      (x) =>
+        x.unit &&
+        x.quantity !== null &&
+        x.quantity >= 0 &&
+        x.price !== null &&
+        x.price >= 0
     );
 
   return cleaned.length ? cleaned : null;
