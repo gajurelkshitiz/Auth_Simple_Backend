@@ -20,6 +20,7 @@ import restaurantSettingsRoute from "./routes/restaurantSettingsRoute.js";
 import receiptRouter from "./routes/receiptRoute.js";
 import categoryRouter from "./routes/categoryRoute.js";
 import reportRoutes from "./routes/reportRoute.js";
+import ingredientRoutes from "./routes/ingredientRoute.js";
 
 const app = express();
 app.use(
@@ -50,14 +51,15 @@ app.get("/", (_req, res) => {
   res.send("Test Route is fine!");
 });
 
+app.use("/api/v1/receipts", receiptRouter);
+app.use("/api/v1/categories", categoryRouter);
+app.use("/api/v1/reports", reportRoutes);
+app.use("/api/v1/ingredients", ingredientRoutes);
+
 app.use((err, _req, res, _next) => {
   console.error("[ERROR]", err);
   res.status(500).json({ error: err.message || "Internal Server Error" });
 });
-
-app.use("/api/v1/receipts", receiptRouter);
-app.use("/api/v1/categories", categoryRouter);
-app.use("/api/v1/reports", reportRoutes);
 
 const port = process.env.PORT || 3000;
 
