@@ -18,22 +18,18 @@ export const setDailyStock = async (req, res) => {
     const dateStr = (date && date.toString().trim()) || todayString();
     const totalNum = Number(totalStock);
     if (Number.isNaN(totalNum) || totalNum < 0) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "totalStock must be a non-negative number",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "totalStock must be a non-negative number",
+      });
     }
 
     const item = await Item.findOne({ _id: itemId, restaurant: restaurantId });
     if (!item) {
-      return res
-        .status(404)
-        .json({
-          success: false,
-          message: "Item not found for this restaurant",
-        });
+      return res.status(404).json({
+        success: false,
+        message: "Item not found for this restaurant",
+      });
     }
 
     const existing = await DailyItemStock.findOne({
@@ -110,12 +106,10 @@ export const decrementStock = async (req, res) => {
     const { itemId, date, quantity } = req.body;
     const qty = Number(quantity) || 0;
     if (!itemId || qty <= 0) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "itemId and positive quantity required",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "itemId and positive quantity required",
+      });
     }
     const dateStr = (date && date.toString()) || todayString();
 
@@ -131,12 +125,10 @@ export const decrementStock = async (req, res) => {
     ).populate("item", "name");
 
     if (!updated) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Insufficient stock or record not found",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Insufficient stock or record not found",
+      });
     }
 
     emitToRestaurant(req, restaurantId, "dailyStockUpdated", {
@@ -155,12 +147,10 @@ export const incrementStock = async (req, res) => {
     const { itemId, date, quantity } = req.body;
     const qty = Number(quantity) || 0;
     if (!itemId || qty <= 0) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "itemId and positive quantity required",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "itemId and positive quantity required",
+      });
     }
     const dateStr = (date && date.toString()) || todayString();
 
@@ -209,6 +199,55 @@ export const deleteDailyStock = async (req, res) => {
     return res.json({ success: true, message: "Deleted" });
   } catch (err) {
     console.error("[DAILYSTOCK delete]", err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+export const updateDailyStock = async (req, res) => {
+  try {
+    const restaurantId = req.user.restaurantId;
+    const { id } = req.params;
+    const { totalStock } = req.body;
+
+    if (totalStock === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: "totalStock is required",
+      });
+    }
+
+    const newTotal = Number(totalStock);
+    if (isNaN(newTotal) || newTotal < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "totalStock must be a non-negative number",
+      });
+    }
+
+    const stockDoc = await DailyItemStock.findOne({
+      _id: id,
+      restaurant: restaurantId,
+    });
+
+    if (!stockDoc) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Daily stock record not found" });
+    }
+
+    const used = stockDoc.totalStock - stockDoc.remainingStock;
+
+    const newRemaining = Math.max(newTotal - used, 0);
+
+    stockDoc.totalStock = newTotal;
+    stockDoc.remainingStock = newRemaining;
+
+    await stockDoc.save();
+
+    const populated = await stockDoc.populate("item", "name");
+
+    return res.json({ success: true, stock: populated });
+  } catch (err) {
+    console.error("[DAILYSTOCK update]", err);
     return res.status(500).json({ success: false, message: err.message });
   }
 };

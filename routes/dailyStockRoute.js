@@ -4,6 +4,7 @@ import {
   getDailyStocks,
   decrementStock,
   incrementStock,
+  updateDailyStock,
   deleteDailyStock,
 } from "../controllers/dailyStockController.js";
 
@@ -25,6 +26,12 @@ router.patch(
   "/increment",
   authMiddleware(["admin", "manager", "staff"]),
   incrementStock
+);
+
+router.patch(
+  "/update/:id",
+  authMiddleware(["admin", "manager", "staff"]),
+  updateDailyStock
 );
 
 router.delete(
