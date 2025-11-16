@@ -21,6 +21,7 @@ import receiptRouter from "./routes/receiptRoute.js";
 import categoryRouter from "./routes/categoryRoute.js";
 import reportRoutes from "./routes/reportRoute.js";
 import ingredientRoutes from "./routes/ingredientRoute.js";
+import dailyStockRoutes from "./routes/dailyStockRoute.js";
 
 const app = express();
 app.use(
@@ -55,6 +56,7 @@ app.use("/api/v1/receipts", receiptRouter);
 app.use("/api/v1/categories", categoryRouter);
 app.use("/api/v1/reports", reportRoutes);
 app.use("/api/v1/ingredients", ingredientRoutes);
+app.use("/api/v1/daily-stock", dailyStockRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error("[ERROR]", err);
