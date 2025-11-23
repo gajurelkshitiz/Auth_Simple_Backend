@@ -277,14 +277,18 @@ export const cancelOrder = async (req, res) => {
 
     if (!order) return res.status(404).json({ error: "Order not found" });
 
+    if (order.checkedOut === true) {
+      return res
+        .status(400)
+        .json({ error: "Checked-out orders cannot be cancelled" });
+    }
+
     if (order.status === "cancelled") {
       return res.status(400).json({ error: "Order already cancelled" });
     }
 
     order.cancelReason = cancelReason;
     order.status = "cancelled";
-
-    order.checkedOut = true;
 
     await adjustStock(order.items, true, restaurantId);
     await freeTable(order.table);
