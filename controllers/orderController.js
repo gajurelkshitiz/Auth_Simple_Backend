@@ -262,6 +262,52 @@ export const getOrderById = async (req, res) => {
   }
 };
 
+export const cancelOrder = async (req, res) => {
+  try {
+    const restaurantId = ensureRestaurant(req, res);
+    if (!restaurantId) return;
+
+    const { id } = req.params;
+    const { cancelReason = "" } = req.body || {};
+
+    const order = await Order.findOne({
+      _id: id,
+      restaurant: restaurantId,
+    }).populate("table");
+
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    if (order.status === "cancelled")
+      return res.status(400).json({ error: "Order already cancelled" });
+
+    if (order.checkedOut)
+      return res
+        .status(400)
+        .json({ error: "Checked out order cannot be cancelled" });
+
+    order.cancelReason = cancelReason;
+
+    order.status = "cancelled";
+
+    await adjustStock(order.items, true, restaurantId);
+    await freeTable(order.table);
+
+    await order.save();
+
+    io.to(restaurantId.toString()).emit("order:cancelled", {
+      orderId: order._id,
+      tableId: order.table._id,
+      cancelReason,
+      cancelledAt: new Date(),
+    });
+
+    return res.status(200).json({ message: "Order cancelled", order });
+  } catch (err) {
+    console.error("[ORDER cancel]", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
 export const updateOrder = async (req, res) => {
   try {
     const restaurantId = ensureRestaurant(req, res);

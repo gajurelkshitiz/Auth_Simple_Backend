@@ -1,6 +1,7 @@
 import express from "express";
 import {
   createOrder,
+  cancelOrder,
   getOrders,
   getOrderById,
   updateOrder,
@@ -15,6 +16,13 @@ const router = express.Router();
 router.get("/", authMiddleware(["admin", "manager", "staff"]), getOrders);
 router.get("/:id", authMiddleware(["admin", "manager", "staff"]), getOrderById);
 router.post("/", authMiddleware(["admin", "manager", "staff"]), createOrder);
+
+router.patch(
+  "/:id/cancel",
+  authMiddleware(["admin", "manager", "staff"]),
+  cancelOrder
+);
+
 router.put("/:id", authMiddleware(["admin", "manager", "staff"]), updateOrder);
 router.patch(
   "/:id/checkout",

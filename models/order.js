@@ -20,14 +20,15 @@ const paymentMethodSchema = new mongoose.Schema({
   },
   others: {
     type: String,
-    enum: ["cash-card", "cash-online", "card-online", null],
+    enum: ["cash-card", "cash-online", "card-online"],
     default: null,
   },
 });
 
 const orderSchema = new mongoose.Schema(
   {
-    orderId: { type: Number, required: true },
+    orderId: { type: Number, required: true, unique: true },
+
     table: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Table",
@@ -39,7 +40,9 @@ const orderSchema = new mongoose.Schema(
       ref: "Restaurant",
       required: true,
     },
+
     items: [orderItemSchema],
+
     totalAmount: { type: Number, required: true, default: 0 },
     discountPercent: { type: Number, default: 0 },
     discountAmount: { type: Number, default: 0 },
@@ -48,16 +51,29 @@ const orderSchema = new mongoose.Schema(
     finalAmount: { type: Number, default: 0 },
     paidAmount: { type: Number, default: 0 },
     dueAmount: { type: Number, default: 0 },
+
     paymentStatus: {
       type: String,
       enum: ["Paid", "Due", "Credit"],
       default: "Due",
     },
+
     paymentMethod: { type: paymentMethodSchema, default: () => ({}) },
+
     customerName: { type: String, default: null },
-    checkedOut: { type: Boolean, default: false },
+
+    status: {
+      type: String,
+      enum: ["active", "cancelled", "checkedout"],
+      default: "active",
+    },
+
+    cancelReason: { type: String, default: "" },
+
     checkedOutAt: { type: Date },
+
     note: { type: String, default: "" },
+
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     adminId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   },
