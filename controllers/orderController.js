@@ -277,17 +277,14 @@ export const cancelOrder = async (req, res) => {
 
     if (!order) return res.status(404).json({ error: "Order not found" });
 
-    if (order.status === "cancelled")
+    if (order.status === "cancelled") {
       return res.status(400).json({ error: "Order already cancelled" });
-
-    if (order.checkedOut)
-      return res
-        .status(400)
-        .json({ error: "Checked out order cannot be cancelled" });
+    }
 
     order.cancelReason = cancelReason;
-
     order.status = "cancelled";
+
+    order.checkedOut = true;
 
     await adjustStock(order.items, true, restaurantId);
     await freeTable(order.table);
@@ -301,7 +298,10 @@ export const cancelOrder = async (req, res) => {
       cancelledAt: new Date(),
     });
 
-    return res.status(200).json({ message: "Order cancelled", order });
+    return res.status(200).json({
+      message: "Order cancelled",
+      order,
+    });
   } catch (err) {
     console.error("[ORDER cancel]", err);
     return res.status(500).json({ error: "Internal Server Error" });
