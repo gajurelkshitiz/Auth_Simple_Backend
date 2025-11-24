@@ -17,6 +17,68 @@ const buildMatchQuery = (req) => {
   return match;
 };
 
+export const getDailyItemWiseReport = async (req, res) => {
+  try {
+    const { startDate, endDate, restaurantId } = req.query;
+
+    if (!startDate || !endDate)
+      return res
+        .status(400)
+        .json({ message: "startDate and endDate required" });
+
+    const match = {};
+
+    if (restaurantId)
+      match.restaurant = new mongoose.Types.ObjectId(restaurantId);
+
+    match.printedAt = {
+      $gte: new Date(startDate),
+      $lte: new Date(endDate),
+    };
+
+    const result = await Receipt.aggregate([
+      { $match: match },
+      { $unwind: "$items" },
+
+      {
+        $group: {
+          _id: {
+            date: { $dateToString: { format: "%Y-%m-%d", date: "$printedAt" } },
+            item: "$items.name",
+          },
+          totalQuantity: { $sum: "$items.quantity" },
+          totalRevenue: {
+            $sum: { $multiply: ["$items.price", "$items.quantity"] },
+          },
+        },
+      },
+
+      { $sort: { "_id.date": 1 } },
+    ]);
+
+    const formatted = {};
+
+    result.forEach((row) => {
+      const date = row._id.date;
+
+      if (!formatted[date]) {
+        formatted[date] = [];
+      }
+
+      formatted[date].push({
+        item: row._id.item,
+        quantity: row.totalQuantity,
+        revenue: row.totalRevenue,
+      });
+    });
+
+    res.json(formatted);
+  } catch (err) {
+    console.error("[getDailyItemWiseReport]", err);
+    res.status(500).json({ message: "Failed", error: err.message });
+  }
+};
+
 export const getSalesSummary = async (req, res) => {
   try {
     const { type = "daily" } = req.query;
