@@ -518,6 +518,7 @@ export const bulkCheckout = async (req, res) => {
 
         order.checkedOut = true;
         order.checkedOutAt = new Date();
+        order.status = "checkedout";
 
         if (hasDue && force) applyPayment(order, "Paid", null, paymentMethod);
         else {
