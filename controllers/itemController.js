@@ -42,12 +42,14 @@ const parseVariants = (raw) => {
     .map((x) => {
       const quantity = Number(x?.quantity);
       const price = Number(x?.price);
+      const conversionFactor = Number(x?.conversionFactor) || 1;
 
       return {
         unit: (x?.unit ?? "").toString().trim(),
         quantity: Number.isNaN(quantity) ? null : quantity,
         price: Number.isNaN(price) ? null : price,
         stockQuantity: Number(x?.stockQuantity) || 0,
+        conversionFactor,
         autoStock: Boolean(x?.autoStock),
         alertThreshold: Number(x?.alertThreshold) || 0,
         hasIngredient: Boolean(x?.hasIngredient),
@@ -88,7 +90,7 @@ export const createItem = async (req, res) => {
     if (!variants) {
       return res.status(400).json({
         error:
-          "Invalid variants. Send an array of {unit,quantity, price, hasIngredient}. For multipart, send JSON string in 'variants'.",
+          "Invalid variants. Send an array of {unit,quantity, price,conversionFactor, hasIngredient}. For multipart, send JSON string in 'variants'.",
       });
     }
 
@@ -284,6 +286,9 @@ export const deleteItem = async (req, res) => {
 
 export const getItemsByCategory = async (req, res) => {
   try {
+    const restaurantId = ensureRestaurant(req, res);
+    if (!restaurantId) return;
+
     const { categoryId } = req.params;
 
     if (!categoryId.match(/^[a-f\d]{24}$/i)) {
