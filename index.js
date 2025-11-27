@@ -22,6 +22,7 @@ import categoryRouter from "./routes/categoryRoute.js";
 import reportRoutes from "./routes/reportRoute.js";
 import ingredientRoutes from "./routes/ingredientRoute.js";
 import dailyStockRoutes from "./routes/dailyStockRoute.js";
+import itemStockRoute from "./routes/itemStockRoute.js";
 
 const app = express();
 app.use(
@@ -57,6 +58,7 @@ app.use("/api/v1/categories", categoryRouter);
 app.use("/api/v1/reports", reportRoutes);
 app.use("/api/v1/ingredients", ingredientRoutes);
 app.use("/api/v1/daily-stock", dailyStockRoutes);
+app.use("/api/v1/item-stock", itemStockRoute);
 
 app.use((err, _req, res, _next) => {
   console.error("[ERROR]", err);
