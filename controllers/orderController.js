@@ -7,6 +7,10 @@ import KOT from "../models/kot.js";
 import { printKOT } from "../utils/printKOT.js";
 import { io } from "../index.js";
 import { adjustStock } from "./stockController.js";
+import {
+  decreaseItemStockWithConversion,
+  restoreItemStockWithConversion,
+} from "./itemStockController.js";
 
 const ensureRestaurant = (req, res) => {
   const restaurantId = req.user?.restaurantId;
@@ -290,6 +294,10 @@ export const cancelOrder = async (req, res) => {
     order.cancelReason = cancelReason;
     order.status = "cancelled";
 
+    if (order.checkedOut === true) {
+      await restoreItemStockWithConversion(order.items, restaurantId);
+    }
+
     await adjustStock(order.items, true, restaurantId);
     await freeTable(order.table);
 
@@ -426,6 +434,8 @@ export const checkoutOrder = async (req, res) => {
     order.checkedOutAt = new Date();
     order.status = "checkedout";
 
+    await decreaseItemStockWithConversion(order.items, restaurantId);
+
     if (hasDue && force) applyPayment(order, "Paid", null, paymentMethod);
     else {
       const alreadyPaid = Number(order.paidAmount) || 0;
@@ -520,6 +530,8 @@ export const bulkCheckout = async (req, res) => {
         order.checkedOut = true;
         order.checkedOutAt = new Date();
         order.status = "checkedout";
+
+        await decreaseItemStockWithConversion(order.items, restaurantId);
 
         if (hasDue && force) applyPayment(order, "Paid", null, paymentMethod);
         else {

@@ -156,3 +156,57 @@ export const deleteItemStock = async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
+
+export const decreaseItemStockWithConversion = async (
+  orderItems,
+  restaurantId
+) => {
+  for (const orderItem of orderItems) {
+    const itemId = orderItem.item?._id || orderItem.item; // get _id if item is populated
+    const variantUnit = orderItem.unitName;
+    const quantity = orderItem.quantity;
+
+    if (!itemId || !variantUnit || !quantity) continue;
+
+    const item = await Item.findById(itemId);
+    if (!item) continue;
+
+    const variant = item.variants.find((v) => v.unit === variantUnit);
+    if (!variant) continue;
+
+    const decrementQty = quantity * (variant.conversionFactor || 1);
+
+    await ItemStock.findOneAndUpdate(
+      { item: itemId, variantUnit, restaurant: restaurantId },
+      { $inc: { quantity: -decrementQty } },
+      { new: true }
+    );
+  }
+};
+
+export const restoreItemStockWithConversion = async (
+  orderItems,
+  restaurantId
+) => {
+  for (const orderItem of orderItems) {
+    const itemId = orderItem.item?._id || orderItem.item;
+    const variantUnit = orderItem.unitName;
+    const quantity = orderItem.quantity;
+
+    if (!itemId || !variantUnit || !quantity) continue;
+
+    const item = await Item.findById(itemId);
+    if (!item) continue;
+
+    const variant = item.variants.find((v) => v.unit === variantUnit);
+    if (!variant) continue;
+
+    const restoreQty = quantity * (variant.conversionFactor || 1);
+
+    await ItemStock.findOneAndUpdate(
+      { item: itemId, variantUnit, restaurant: restaurantId },
+      { $inc: { quantity: restoreQty } },
+      { new: true }
+    );
+  }
+};
