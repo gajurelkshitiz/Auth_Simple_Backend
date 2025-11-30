@@ -6,11 +6,12 @@ const itemStockSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Item",
       required: true,
+      unique: true,
     },
-    variantUnit: {
-      type: String,
-      required: true,
-    },
+    // variantUnit: {
+    //   type: String,
+    //   required: true,
+    // },
     restaurant: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Restaurant",
@@ -28,9 +29,9 @@ const itemStockSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
-itemStockSchema.index(
-  { item: 1, variantUnit: 1, restaurant: 1 },
-  { unique: true }
-);
+// itemStockSchema.index(
+//   { item: 1, variantUnit: 1, restaurant: 1 },
+//   { unique: true }
+// );
 
 export default mongoose.model("ItemStock", itemStockSchema);

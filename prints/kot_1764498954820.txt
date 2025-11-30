@@ -1,0 +1,14 @@
+********************************
+       KITCHEN ORDER TICKET
+********************************
+Table : Table 1
+Order : 32DB88
+Type  : NEW
+Time  : 04:20:54 PM
+--------------------------------
+BHELPURI (Half Plate) x2
+--------------------------------
+     PLEASE PREPARE IMMEDIATELY
+********************************
+
+

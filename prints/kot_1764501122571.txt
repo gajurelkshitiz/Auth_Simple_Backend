@@ -1,0 +1,15 @@
+********************************
+       KITCHEN ORDER TICKET
+********************************
+Table : Table 1
+Order : CF7A91
+Type  : NEW
+Time  : 04:57:02 PM
+--------------------------------
+BLACK TEA (Cup) x1
+BLACK TEA (Half Cup) x2
+--------------------------------
+     PLEASE PREPARE IMMEDIATELY
+********************************
+
+

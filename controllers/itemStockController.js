@@ -16,14 +16,12 @@ export const createItemStock = async (req, res) => {
     const restaurantId = ensureRestaurant(req, res);
     if (!restaurantId) return;
 
-    const { itemId, variantUnit, quantity } = req.body ?? {};
+    const { itemId, quantity } = req.body ?? {};
 
     if (!itemId || !mongoose.Types.ObjectId.isValid(itemId)) {
       return res.status(400).json({ error: "Valid itemId is required" });
     }
-    if (!variantUnit || typeof variantUnit !== "string") {
-      return res.status(400).json({ error: "variantUnit is required" });
-    }
+
     const qty = Number(quantity);
     if (!Number.isFinite(qty) || qty < 0) {
       return res.status(400).json({ error: "Quantity must be >= 0" });
@@ -32,14 +30,17 @@ export const createItemStock = async (req, res) => {
     const item = await Item.findById(itemId);
     if (!item) return res.status(404).json({ error: "Item not found" });
 
-    const variantExists = item.variants.some((v) => v.unit === variantUnit);
-    if (!variantExists)
-      return res
-        .status(400)
-        .json({ error: "variantUnit does not exist for this item" });
+    // const standardVariant =
+    //   item.variants.find((v) => v.conversionFactor === 1) || item.variants[0];
+    // if (!standardVariant)
+    //   return res.status(400).json({ error: "Item has no valid variants" });
 
     const stock = await ItemStock.findOneAndUpdate(
-      { item: itemId, variantUnit, restaurant: restaurantId },
+      {
+        item: itemId,
+        // variantUnit: standardVariant.unit,
+        restaurant: restaurantId,
+      },
       { $inc: { quantity: qty }, $set: { updatedBy: req.user.userId } },
       { new: true, upsert: true }
     );
@@ -103,25 +104,21 @@ export const updateItemStock = async (req, res) => {
     if (!restaurantId) return;
 
     const { id } = req.params;
-    const { variantUnit, quantity } = req.body ?? {};
+    const { quantity } = req.body ?? {};
 
     if (!mongoose.Types.ObjectId.isValid(id))
       return res.status(400).json({ error: "Invalid ID" });
 
-    const updateData = {};
-    if (variantUnit) updateData.variantUnit = variantUnit;
-    if (quantity !== undefined) {
-      const qty = Number(quantity);
-      if (!Number.isFinite(qty) || qty < 0)
-        return res.status(400).json({ error: "Quantity must be >= 0" });
-      updateData.quantity = qty;
-    }
+    if (quantity === undefined)
+      return res.status(400).json({ error: "Quantity is required" });
 
-    updateData.updatedBy = req.user.userId;
+    const qty = Number(quantity);
+    if (!Number.isFinite(qty) || qty < 0)
+      return res.status(400).json({ error: "Quantity must be >= 0" });
 
     const stock = await ItemStock.findOneAndUpdate(
       { _id: id, restaurant: restaurantId },
-      { $set: updateData },
+      { $set: { quantity: qty, updatedBy: req.user.userId } },
       { new: true }
     ).populate("item", "name variants");
 
@@ -162,14 +159,14 @@ export const decreaseItemStockWithConversion = async (
   restaurantId
 ) => {
   for (const orderItem of orderItems) {
-    const itemId = orderItem.item?._id || orderItem.item; // get _id if item is populated
+    const itemId = orderItem.item?._id || orderItem.item;
     const variantUnit = orderItem.unitName;
     const quantity = orderItem.quantity;
 
     if (!itemId || !variantUnit || !quantity) continue;
 
     const item = await Item.findById(itemId);
-    if (!item) continue;
+    if (!item || !item.variants.length) continue;
 
     const variant = item.variants.find((v) => v.unit === variantUnit);
     if (!variant) continue;
@@ -177,7 +174,7 @@ export const decreaseItemStockWithConversion = async (
     const decrementQty = quantity * (variant.conversionFactor || 1);
 
     await ItemStock.findOneAndUpdate(
-      { item: itemId, variantUnit, restaurant: restaurantId },
+      { item: itemId, restaurant: restaurantId },
       { $inc: { quantity: -decrementQty } },
       { new: true }
     );
@@ -196,7 +193,7 @@ export const restoreItemStockWithConversion = async (
     if (!itemId || !variantUnit || !quantity) continue;
 
     const item = await Item.findById(itemId);
-    if (!item) continue;
+    if (!item || !item.variants.length) continue;
 
     const variant = item.variants.find((v) => v.unit === variantUnit);
     if (!variant) continue;
@@ -204,7 +201,7 @@ export const restoreItemStockWithConversion = async (
     const restoreQty = quantity * (variant.conversionFactor || 1);
 
     await ItemStock.findOneAndUpdate(
-      { item: itemId, variantUnit, restaurant: restaurantId },
+      { item: itemId, restaurant: restaurantId },
       { $inc: { quantity: restoreQty } },
       { new: true }
     );
