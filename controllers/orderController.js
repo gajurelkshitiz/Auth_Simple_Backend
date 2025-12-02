@@ -6,7 +6,6 @@ import OrderCounter from "../models/orderCounter.js";
 import KOT from "../models/kot.js";
 import { printKOT } from "../utils/printKOT.js";
 import { io } from "../index.js";
-import { adjustStock } from "./stockController.js";
 import {
   decreaseItemStockWithConversion,
   restoreItemStockWithConversion,
@@ -181,7 +180,6 @@ export const createOrder = async (req, res) => {
     await order.save();
     await occupyTable(table._id, order._id);
 
-    await adjustStock(items, false, restaurantId);
     await order.populate("items.item", "name");
 
     io.to(restaurantId.toString()).emit("order:created", {
@@ -298,7 +296,6 @@ export const cancelOrder = async (req, res) => {
       await restoreItemStockWithConversion(order.items, restaurantId);
     }
 
-    await adjustStock(order.items, true, restaurantId);
     await freeTable(order.table);
 
     await order.save();
@@ -337,10 +334,8 @@ export const updateOrder = async (req, res) => {
 
     if (items && Array.isArray(items)) {
       if (!validateItems(items, res)) return;
-      await adjustStock(order.items, true, restaurantId);
       order.items = items;
       order.totalAmount = computeTotals(items).totalAmount;
-      await adjustStock(items, false, restaurantId);
     }
 
     if (paymentStatus)
@@ -377,7 +372,6 @@ export const deleteOrder = async (req, res) => {
     if (!order) return res.status(404).json({ error: "Order not found" });
 
     await freeTable(order.table);
-    await adjustStock(order.items, true, restaurantId);
 
     io.to(restaurantId.toString()).emit("order:deleted", {
       orderId: order._id,

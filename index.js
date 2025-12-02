@@ -15,13 +15,10 @@ import userRouter from "./routes/userRoute.js";
 import restaurantRouter from "./routes/restaurantRoute.js";
 import authRouter from "./routes/authRoute.js";
 import kotRouter from "./routes/kotRoute.js";
-import stockRouter from "./routes/stockRoute.js";
 import restaurantSettingsRoute from "./routes/restaurantSettingsRoute.js";
 import receiptRouter from "./routes/receiptRoute.js";
 import categoryRouter from "./routes/categoryRoute.js";
 import reportRoutes from "./routes/reportRoute.js";
-import ingredientRoutes from "./routes/ingredientRoute.js";
-import dailyStockRoutes from "./routes/dailyStockRoute.js";
 import itemStockRoute from "./routes/itemStockRoute.js";
 
 const app = express();
@@ -46,7 +43,6 @@ app.use("/api/v1/orders", orderRouter);
 app.use("/api/v1/users", userRouter);
 app.use("/api/v1/restaurants", restaurantRouter);
 app.use("/api/v1/kots", kotRouter);
-app.use("/api/v1/stocks", stockRouter);
 app.use("/api/v1/restaurant-settings", restaurantSettingsRoute);
 
 app.get("/", (_req, res) => {
@@ -56,8 +52,6 @@ app.get("/", (_req, res) => {
 app.use("/api/v1/receipts", receiptRouter);
 app.use("/api/v1/categories", categoryRouter);
 app.use("/api/v1/reports", reportRoutes);
-app.use("/api/v1/ingredients", ingredientRoutes);
-app.use("/api/v1/daily-stock", dailyStockRoutes);
 app.use("/api/v1/item-stock", itemStockRoute);
 
 app.use((err, _req, res, _next) => {

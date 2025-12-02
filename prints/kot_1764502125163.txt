@@ -1,0 +1,14 @@
+********************************
+       KITCHEN ORDER TICKET
+********************************
+Table : Table 1
+Order : 3E40DF
+Type  : NEW
+Time  : 05:13:45 PM
+--------------------------------
+BLACK TEA (Half Cup) x3
+--------------------------------
+     PLEASE PREPARE IMMEDIATELY
+********************************
+
+
