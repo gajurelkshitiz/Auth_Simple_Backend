@@ -4,6 +4,7 @@ import Table from "../models/table.js";
 import Area from "../models/area.js";
 import OrderCounter from "../models/orderCounter.js";
 import KOT from "../models/kot.js";
+import Item from "../models/item.js";
 import { printKOT } from "../utils/printKOT.js";
 import { io } from "../index.js";
 import {
@@ -29,22 +30,31 @@ async function nextOrderIdForRestaurant(restaurantId) {
   return doc.seq;
 }
 
-function computeTotals(items = []) {
-  const totalAmount = items.reduce(
+function computeTotals(items = [], deliveryCharge = 0) {
+  const itemsTotal = items.reduce(
     (sum, it) => sum + Number(it.price || 0) * Number(it.quantity || 0),
     0
   );
-  return { totalAmount };
+
+  return {
+    itemsTotal,
+    totalAmount: itemsTotal + Number(deliveryCharge || 0),
+  };
 }
 
 function applyPayment(order, paymentStatus, customerName, paymentMethod = {}) {
-  const subtotal = Number(order.totalAmount) || 0;
+  const itemsTotal = Number(order.itemsTotal || 0);
   const discountPercent = Number(order.discountPercent || 0);
   const vatPercent = Number(order.vatPercent || 0);
-  const discountAmount = (subtotal * discountPercent) / 100;
-  const discountedBase = subtotal - discountAmount;
-  const vatAmount = (discountedBase * vatPercent) / 100;
-  const finalAmount = discountedBase + vatAmount;
+  const deliveryCharge = Number(order.deliveryCharge || 0);
+
+  const discountAmount = (itemsTotal * discountPercent) / 100;
+  const afterDiscount = itemsTotal - discountAmount;
+
+  const vatAmount = (afterDiscount * vatPercent) / 100;
+  const afterVAT = afterDiscount + vatAmount;
+
+  const finalAmount = afterVAT + deliveryCharge;
 
   order.discountAmount = discountAmount;
   order.vatAmount = vatAmount;
@@ -56,17 +66,12 @@ function applyPayment(order, paymentStatus, customerName, paymentMethod = {}) {
   if (paymentStatus === "Paid") {
     order.paidAmount = finalAmount;
     order.dueAmount = 0;
-    order.customerName = null;
-  } else if (paymentStatus === "Due") {
+  } else {
     order.paidAmount = 0;
     order.dueAmount = finalAmount;
-    order.customerName = null;
-  } else if (paymentStatus === "Credit") {
-    order.paidAmount = 0;
-    order.dueAmount = finalAmount;
-    order.customerName = customerName || null;
   }
 
+  order.customerName = customerName ?? "Guest";
   order.paymentStatus = paymentStatus;
 }
 
@@ -132,91 +137,108 @@ export const createOrder = async (req, res) => {
     const {
       tableId,
       items,
+      orderType = "dine-in",
+      deliveryCharge = 0,
       paymentStatus = "Due",
       customerName,
+      deliveryAddress,
       note,
       vatPercent = 0,
       discountPercent = 0,
       paymentMethod = {},
     } = req.body ?? {};
 
-    if (!tableId || !mongoose.Types.ObjectId.isValid(tableId)) {
-      return res.status(400).json({ error: "Invalid or missing tableId" });
+    if (orderType === "dine-in") {
+      if (!tableId || !mongoose.Types.ObjectId.isValid(tableId)) {
+        return res.status(400).json({ error: "Invalid or missing tableId" });
+      }
     }
+
     if (!validateItems(items, res)) return;
 
-    const table = await Table.findById(tableId).populate("area", "name");
-    if (!table || table.restaurant.toString() !== restaurantId.toString()) {
-      return res
-        .status(404)
-        .json({ error: "Table not found in your restaurant" });
+    let areaId = null;
+    let table = null;
+
+    if (orderType === "dine-in") {
+      table = await Table.findById(tableId).populate("area", "name");
+      if (!table || table.restaurant.toString() !== restaurantId.toString()) {
+        return res
+          .status(404)
+          .json({ error: "Table not found in your restaurant" });
+      }
+      areaId = table.area?._id ?? table.area;
+      if (!areaId)
+        return res
+          .status(400)
+          .json({ error: "Table has no valid area reference" });
     }
 
-    const areaId = table.area?._id ?? table.area;
-    if (!areaId)
-      return res
-        .status(400)
-        .json({ error: "Table has no valid area reference" });
-
     const orderId = await nextOrderIdForRestaurant(restaurantId);
-    const { totalAmount } = computeTotals(items);
+    const { totalAmount } = computeTotals(items, deliveryCharge);
 
     const order = await Order.create({
       orderId,
-      table: table._id,
-      area: areaId,
+      orderType,
+      table: table?._id ?? null,
+      area: areaId ?? null,
       restaurant: restaurantId,
       items,
       totalAmount,
+      deliveryCharge: orderType === "delivery" ? deliveryCharge : 0,
+      deliveryAddress: orderType === "delivery" ? deliveryAddress : null,
       vatPercent,
       discountPercent,
       checkedOut: false,
       note,
       createdBy: req.user.userId,
       adminId: req.user.userId,
+      customerName: customerName ?? null,
     });
 
     applyPayment(order, paymentStatus, customerName, paymentMethod);
     await order.save();
-    await occupyTable(table._id, order._id);
+
+    if (orderType === "dine-in") await occupyTable(table._id, order._id);
 
     await order.populate("items.item", "name");
 
     io.to(restaurantId.toString()).emit("order:created", {
       orderId: order._id,
-      tableId: table._id,
+      tableId: table?._id,
       totalAmount: order.totalAmount,
       status: "active",
       createdAt: new Date(),
     });
 
-    const kot = await KOT.create({
-      restaurant: restaurantId,
-      table: table._id,
-      order: order._id,
-      type: "NEW",
-      items: order.items.map((it) => ({
-        item: it.item,
-        name: it.item?.name || undefined,
-        unitName: it.unitName,
-        quantity: it.quantity,
-      })),
-      createdBy: req.user.userId,
-      createdByRole: req.user.role,
-    });
-
-    try {
-      printKOT(await kot.populate(["table", "order"]));
-      io.to(restaurantId.toString()).emit("kot:new", {
+    if (orderType === "dine-in") {
+      const kot = await KOT.create({
+        restaurant: restaurantId,
+        table: table._id,
+        order: order._id,
         type: "NEW",
-        table: table.name,
-        tableId: table._id,
-        orderId: order._id,
-        items: order.items,
-        createdAt: new Date(),
+        items: order.items.map((it) => ({
+          item: it.item,
+          name: it.item?.name || undefined,
+          unitName: it.unitName,
+          quantity: it.quantity,
+        })),
+        createdBy: req.user.userId,
+        createdByRole: req.user.role,
       });
-    } catch (err) {
-      console.warn("[KOT print error]", err.message);
+
+      try {
+        printKOT(await kot.populate(["table", "order"]));
+        io.to(restaurantId.toString()).emit("kot:new", {
+          type: "NEW",
+          table: table.name,
+          tableId: table._id,
+          orderId: order._id,
+          items: order.items,
+          createdAt: new Date(),
+        });
+      } catch (err) {
+        console.warn("[KOT print error]", err.message);
+      }
     }
 
     return res.status(201).json({ message: "Order created", order });
@@ -279,7 +301,7 @@ export const cancelOrder = async (req, res) => {
 
     if (!order) return res.status(404).json({ error: "Order not found" });
 
-    if (order.checkedOut === true) {
+    if (order.status === "checkedout") {
       return res
         .status(400)
         .json({ error: "Checked-out orders cannot be cancelled" });
@@ -292,25 +314,22 @@ export const cancelOrder = async (req, res) => {
     order.cancelReason = cancelReason;
     order.status = "cancelled";
 
-    if (order.checkedOut === true) {
+    if (order.status === "checkedout") {
       await restoreItemStockWithConversion(order.items, restaurantId);
     }
 
-    await freeTable(order.table);
+    if (order.orderType === "dine-in") await freeTable(order.table);
 
     await order.save();
 
     io.to(restaurantId.toString()).emit("order:cancelled", {
       orderId: order._id,
-      tableId: order.table._id,
+      tableId: order.table?._id,
       cancelReason,
       cancelledAt: new Date(),
     });
 
-    return res.status(200).json({
-      message: "Order cancelled",
-      order,
-    });
+    return res.status(200).json({ message: "Order cancelled", order });
   } catch (err) {
     console.error("[ORDER cancel]", err);
     return res.status(500).json({ error: "Internal Server Error" });
@@ -346,7 +365,7 @@ export const updateOrder = async (req, res) => {
 
     io.to(restaurantId.toString()).emit("order:updated", {
       orderId: order._id,
-      tableId: order.table._id,
+      tableId: order.table?._id,
       totalAmount: order.totalAmount,
       items: order.items,
       updatedAt: new Date(),
@@ -371,11 +390,11 @@ export const deleteOrder = async (req, res) => {
     });
     if (!order) return res.status(404).json({ error: "Order not found" });
 
-    await freeTable(order.table);
+    if (order.orderType === "dine-in") await freeTable(order.table);
 
     io.to(restaurantId.toString()).emit("order:deleted", {
       orderId: order._id,
-      tableId: order.table,
+      tableId: order.table?._id,
       deletedAt: new Date(),
     });
 
@@ -438,12 +457,13 @@ export const checkoutOrder = async (req, res) => {
       if (order.dueAmount <= 0) order.paymentStatus = "Paid";
     }
 
+    if (order.orderType === "dine-in") await freeTable(order.table);
+
     await order.save();
-    await freeTable(order.table);
 
     io.to(restaurantId.toString()).emit("order:checkedOut", {
       orderId: order._id,
-      tableId: order.table._id,
+      tableId: order.table?._id,
       checkedOutAt: order.checkedOutAt,
       vatPercent,
       discountPercent,
@@ -535,34 +555,20 @@ export const bulkCheckout = async (req, res) => {
           if (order.dueAmount <= 0) order.paymentStatus = "Paid";
         }
 
-        await order.save();
-        await freeTable(order.table);
+        if (order.orderType === "dine-in") await freeTable(order.table);
 
+        await order.save();
         ok++;
         results.push({ id, ok: true });
-
-        io.to(restaurantId.toString()).emit("order:checkedOut", {
-          orderId: order._id,
-          tableId: order.table._id,
-          checkedOutAt: order.checkedOutAt,
-          vatPercent,
-          discountPercent,
-          finalAmount,
-        });
       } catch (e) {
         failed++;
-        results.push({ id, ok: false, reason: e?.message || "Error" });
+        results.push({ id, ok: false, reason: e.message });
       }
     }
 
-    return res.status(200).json({
-      ok,
-      failed,
-      results,
-      message: `Checked out ${ok} • Failed ${failed}`,
-    });
+    return res.status(200).json({ ok, failed, results });
   } catch (err) {
     console.error("[ORDER bulkCheckout]", err);
-    res.status(500).json({ error: "Internal Server Error" });
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 };

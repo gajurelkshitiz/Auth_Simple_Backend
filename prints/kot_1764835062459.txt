@@ -1,0 +1,14 @@
+********************************
+       KITCHEN ORDER TICKET
+********************************
+Table : Table 1
+Order : AE1481
+Type  : NEW
+Time  : 01:42:42 PM
+--------------------------------
+Unnamed Item (Half Cup) x1
+--------------------------------
+     PLEASE PREPARE IMMEDIATELY
+********************************
+
+

@@ -29,12 +29,27 @@ const orderSchema = new mongoose.Schema(
   {
     orderId: { type: Number, required: true, unique: true },
 
+    orderType: {
+      type: String,
+      enum: ["dine-in", "takeaway", "delivery"],
+      required: true,
+      default: "dine-in",
+    },
+
     table: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Table",
-      required: true,
+      required: function () {
+        return this.orderType === "dine-in";
+      },
     },
-    area: { type: mongoose.Schema.Types.ObjectId, ref: "Area", required: true },
+    area: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Area",
+      required: function () {
+        return this.orderType === "dine-in";
+      },
+    },
     restaurant: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Restaurant",
@@ -44,6 +59,8 @@ const orderSchema = new mongoose.Schema(
     items: [orderItemSchema],
 
     totalAmount: { type: Number, required: true, default: 0 },
+    deliveryCharge: { type: Number, default: 0, min: 0 },
+
     discountPercent: { type: Number, default: 0 },
     discountAmount: { type: Number, default: 0 },
     vatPercent: { type: Number, default: 0 },
@@ -60,7 +77,20 @@ const orderSchema = new mongoose.Schema(
 
     paymentMethod: { type: paymentMethodSchema, default: () => ({}) },
 
-    customerName: { type: String, default: null },
+    customerName: {
+      type: String,
+      required: function () {
+        return this.orderType !== "delivery";
+      },
+    },
+
+    deliveryAddress: {
+      type: String,
+      default: null,
+      required: function () {
+        return this.orderType === "delivery";
+      },
+    },
 
     status: {
       type: String,

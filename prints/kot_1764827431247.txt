@@ -1,0 +1,14 @@
+********************************
+       KITCHEN ORDER TICKET
+********************************
+Table : Table 1
+Order : 57D939
+Type  : NEW
+Time  : 11:35:31 AM
+--------------------------------
+Unnamed Item (Half Cup) x1
+--------------------------------
+     PLEASE PREPARE IMMEDIATELY
+********************************
+
+

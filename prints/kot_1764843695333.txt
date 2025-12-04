@@ -1,0 +1,14 @@
+********************************
+       KITCHEN ORDER TICKET
+********************************
+Table : Tablee-I
+Order : DAB376
+Type  : NEW
+Time  : 04:06:35 PM
+--------------------------------
+MILK TEA (Half Cup) x1
+--------------------------------
+     PLEASE PREPARE IMMEDIATELY
+********************************
+
+
