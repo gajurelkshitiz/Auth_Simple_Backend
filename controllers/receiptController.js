@@ -16,6 +16,7 @@ export const saveReceipt = async (req, res) => {
       orderId,
       vatPercent: reqVat,
       discountPercent: reqDiscount,
+      deliveryCharge: reqDeliveryCharge,
     } = req.body;
 
     const order = await Order.findById(orderId)
@@ -45,21 +46,43 @@ export const saveReceipt = async (req, res) => {
     const discountAmount = (subtotal * discountPercent) / 100;
     const subtotalAfterDiscount = subtotal - discountAmount;
     const vatAmount = (subtotalAfterDiscount * vatPercent) / 100;
-    const finalAmount = subtotalAfterDiscount + vatAmount;
+    const deliveryCharge =
+      order.orderType === "delivery"
+        ? Number(reqDeliveryCharge || order.deliveryCharge || 0)
+        : 0;
+
+    const finalAmount = subtotalAfterDiscount + vatAmount + deliveryCharge;
 
     order.discountPercent = discountPercent;
     order.vatPercent = vatPercent;
     order.subtotal = subtotal;
     order.discountAmount = discountAmount;
     order.vatAmount = vatAmount;
+    order.deliveryCharge = deliveryCharge;
     order.finalAmount = finalAmount;
     await order.save();
+
+    let displayTableName = "";
+    let displayAreaName = "";
+    if (order.orderType === "dine-in" && order.table && order.area) {
+      displayTableName = order.table.name;
+      displayAreaName = order.area?.name || "";
+    } else if (order.orderType === "takeaway") {
+      displayTableName = "TAKEAWAY";
+      displayAreaName = "";
+    } else if (order.orderType === "delivery") {
+      displayTableName = "DELIVERY";
+      displayAreaName = "";
+    }
 
     const receiptData = {
       order: order._id,
       restaurantName,
-      tableName: order.table.name,
-      areaName: order.area?.name,
+      // tableName: order.table.name,
+      // areaName: order.area?.name,
+      tableName: displayTableName,
+      areaName: displayAreaName,
+      orderType: order.orderType,
       customerName: order.customerName,
       note: order.note,
       items: order.items.map((i) => ({
@@ -73,6 +96,7 @@ export const saveReceipt = async (req, res) => {
       discountAmount,
       vatPercent,
       vatAmount,
+      deliveryCharge,
       finalAmount,
       paymentStatus: order.paymentStatus,
       printedAt: new Date(),
