@@ -13,13 +13,30 @@ import {
 } from "./itemStockController.js";
 
 function diffOrderItems(oldItems = [], newItems = []) {
-  const key = (it) => `${it.item.toString()}__${it.unitName}`;
+  const key = (it) => {
+    const itemId = it?.item?.toString?.() ?? String(it?.item ?? "");
+    const unit = (it?.unitName ?? "").toString();
+    return `${itemId}__${unit}`;
+  };
 
   const oldMap = new Map();
   const newMap = new Map();
 
-  oldItems.forEach((it) => oldMap.set(key(it), it));
-  newItems.forEach((it) => newMap.set(key(it), it));
+  oldItems.forEach((it) =>
+    oldMap.set(key(it), {
+      item: it.item,
+      unitName: it.unitName ?? "",
+      quantity: Number(it.quantity || 0),
+    })
+  );
+
+  newItems.forEach((it) =>
+    newMap.set(key(it), {
+      item: it.item,
+      unitName: it.unitName ?? "",
+      quantity: Number(it.quantity || 0),
+    })
+  );
 
   const added = [];
   const removed = [];
@@ -29,7 +46,7 @@ function diffOrderItems(oldItems = [], newItems = []) {
     const oldIt = oldMap.get(k);
     if (!oldIt) {
       added.push(newIt);
-    } else if (Number(oldIt.quantity) !== Number(newIt.quantity)) {
+    } else if (oldIt.quantity !== newIt.quantity) {
       qtyChanged.push({
         item: newIt.item,
         unitName: newIt.unitName,
@@ -441,9 +458,9 @@ export const updateOrder = async (req, res) => {
       for (const it of removed) {
         kotItems.push({
           item: it.item,
-          name: itemMap.get(it.item.toString())?.name ?? undefined,
+          name: itemMap.get(it.item.toString())?.name,
           unitName: it.unitName,
-          quantity: Number(it.quantity || 0),
+          quantity: it.quantity,
           changeType: "VOIDED",
         });
       }
@@ -451,9 +468,9 @@ export const updateOrder = async (req, res) => {
       for (const it of added) {
         kotItems.push({
           item: it.item,
-          name: itemMap.get(it.item.toString())?.name ?? undefined,
+          name: itemMap.get(it.item.toString())?.name,
           unitName: it.unitName,
-          quantity: Number(it.quantity || 0),
+          quantity: it.quantity,
           changeType: "ADDED",
         });
       }
@@ -461,10 +478,10 @@ export const updateOrder = async (req, res) => {
       for (const ch of qtyChanged) {
         kotItems.push({
           item: ch.item,
-          name: itemMap.get(ch.item.toString())?.name ?? undefined,
+          name: itemMap.get(ch.item.toString())?.name,
           unitName: ch.unitName,
-          oldQuantity: Number(ch.oldQty || 0),
-          quantity: Number(ch.newQty || 0),
+          oldQuantity: ch.oldQty,
+          quantity: ch.newQty,
           changeType: "UPDATED",
         });
       }
@@ -512,7 +529,7 @@ export const updateOrder = async (req, res) => {
         table: order.table._id,
         order: order._id,
         type: "UPDATE",
-        note: (newNote || "") + "",
+        note: (order.note ?? "").toString(),
         items: kotPayloadItems,
         createdBy: req.user.userId,
         createdByRole: req.user.role,

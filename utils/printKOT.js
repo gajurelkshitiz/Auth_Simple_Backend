@@ -42,7 +42,7 @@ export const printKOT = async (kot) => {
       const name = it.name?.toUpperCase() || "Unnamed Item";
       const qty = it.quantity;
       const oldQty = it.oldQuantity;
-      const unit = it.unit || "";
+      const unit = it.unitName || "";
 
       if (label === "UPDATED") {
         return `UPDATED : ${name} ${oldQty} -> ${qty} ${unit}\n`;
