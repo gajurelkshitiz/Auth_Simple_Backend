@@ -12,6 +12,42 @@ import {
   restoreItemStockWithConversion,
 } from "./itemStockController.js";
 
+function diffOrderItems(oldItems = [], newItems = []) {
+  const key = (it) => `${it.item.toString()}__${it.unitName}`;
+
+  const oldMap = new Map();
+  const newMap = new Map();
+
+  oldItems.forEach((it) => oldMap.set(key(it), it));
+  newItems.forEach((it) => newMap.set(key(it), it));
+
+  const added = [];
+  const removed = [];
+  const qtyChanged = [];
+
+  for (const [k, newIt] of newMap.entries()) {
+    const oldIt = oldMap.get(k);
+    if (!oldIt) {
+      added.push(newIt);
+    } else if (Number(oldIt.quantity) !== Number(newIt.quantity)) {
+      qtyChanged.push({
+        item: newIt.item,
+        unitName: newIt.unitName,
+        oldQty: oldIt.quantity,
+        newQty: newIt.quantity,
+      });
+    }
+  }
+
+  for (const [k, oldIt] of oldMap.entries()) {
+    if (!newMap.has(k)) {
+      removed.push(oldIt);
+    }
+  }
+
+  return { added, removed, qtyChanged };
+}
+
 const ensureRestaurant = (req, res) => {
   const restaurantId = req.user?.restaurantId;
   if (!restaurantId) {
@@ -216,6 +252,7 @@ export const createOrder = async (req, res) => {
         table: table._id,
         order: order._id,
         type: "NEW",
+        note: note || "",
         items: order.items.map((it) => ({
           item: it.item,
           name: it.item?.name || undefined,
@@ -314,6 +351,26 @@ export const cancelOrder = async (req, res) => {
     order.cancelReason = cancelReason;
     order.status = "cancelled";
 
+    if (order.orderType === "dine-in") {
+      const kot = await KOT.create({
+        restaurant: restaurantId,
+        table: order.table._id,
+        order: order._id,
+        type: "VOID",
+        items: order.items.map((it) => ({
+          item: it.item,
+          name: it.item?.name,
+          unitName: it.unitName,
+          quantity: it.quantity,
+          action: "CANCEL",
+        })),
+        createdBy: req.user.userId,
+        createdByRole: req.user.role,
+      });
+
+      printKOT(await kot.populate(["table", "order"]));
+    }
+
     if (order.status === "checkedout") {
       await restoreItemStockWithConversion(order.items, restaurantId);
     }
@@ -351,8 +408,69 @@ export const updateOrder = async (req, res) => {
     }).populate("table");
     if (!order) return res.status(404).json({ error: "Order not found" });
 
+    const oldItems = order.items.map((it) => ({
+      item: it.item,
+      unitName: it.unitName,
+      quantity: it.quantity,
+    }));
+
     if (items && Array.isArray(items)) {
       if (!validateItems(items, res)) return;
+
+      const { added, removed, qtyChanged } = diffOrderItems(oldItems, items);
+
+      const hasChanges = added.length || removed.length || qtyChanged.length;
+
+      if (hasChanges && order.orderType === "dine-in") {
+        const itemIds = [
+          ...added.map((it) => it.item),
+          ...removed.map((it) => it.item),
+          ...qtyChanged.map((it) => it.item),
+        ];
+        const itemDocs = await Item.find({ _id: { $in: itemIds } });
+
+        const itemMap = new Map(itemDocs.map((it) => [it._id.toString(), it]));
+
+        const kotItems = [
+          ...added.map((it) => ({
+            item: it.item,
+            name: itemMap.get(it.item.toString())?.name,
+            unitName: it.unitName,
+            quantity: it.quantity,
+            action: "ADD",
+          })),
+          ...removed.map((it) => ({
+            item: it.item,
+            name: itemMap.get(it.item.toString())?.name,
+            unitName: it.unitName,
+            quantity: it.quantity,
+            action: "REMOVE",
+          })),
+          ...qtyChanged.map((it) => ({
+            item: it.item,
+            name: itemMap.get(it.item.toString())?.name,
+            unitName: it.unitName,
+            quantity: Math.abs(it.newQty - it.oldQty),
+            action: it.newQty > it.oldQty ? "ADD" : "REMOVE",
+          })),
+        ];
+
+        if (kotItems.length) {
+          const kot = await KOT.create({
+            restaurant: restaurantId,
+            table: order.table._id,
+            order: order._id,
+            type: "UPDATE",
+            note: note || order.note || "",
+            items: kotItems,
+            createdBy: req.user.userId,
+            createdByRole: req.user.role,
+          });
+
+          printKOT(await kot.populate(["table", "order"]));
+        }
+      }
+
       order.items = items;
       order.totalAmount = computeTotals(items).totalAmount;
     }
@@ -506,6 +624,12 @@ export const bulkCheckout = async (req, res) => {
           _id: id,
           restaurant: restaurantId,
         }).populate("table");
+        const oldItems = order.items.map((it) => ({
+          item: it.item,
+          unitName: it.unitName,
+          quantity: it.quantity,
+        }));
+
         if (!order) {
           failed++;
           results.push({ id, ok: false, reason: "Order not found" });
