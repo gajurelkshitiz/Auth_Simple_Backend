@@ -425,11 +425,11 @@ export const updateOrder = async (req, res) => {
     }).populate("table");
     if (!order) return res.status(404).json({ error: "Order not found" });
 
-    const oldItems = (order.items || []).map((it) => ({
-      item: it.item,
-      unitName: it.unitName,
-      quantity: it.quantity,
-    }));
+    const lastKOT = await KOT.findOne({ order: order._id })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const oldKOTItems = lastKOT?.items || [];
 
     let hasChanges = false;
     let kotItems = [];
@@ -437,7 +437,7 @@ export const updateOrder = async (req, res) => {
     if (items && Array.isArray(items)) {
       if (!validateItems(items, res)) return;
 
-      const { added, removed, qtyChanged } = diffOrderItems(oldItems, items);
+      const { added, removed, qtyChanged } = diffOrderItems(oldKOTItems, items);
       hasChanges =
         added.length > 0 || removed.length > 0 || qtyChanged.length > 0;
 
@@ -494,9 +494,7 @@ export const updateOrder = async (req, res) => {
       applyPayment(order, paymentStatus, customerName, paymentMethod);
 
     const oldNote = order.note ?? "";
-    const newNote = note !== undefined ? note : oldNote;
     const noteChanged = note !== undefined && note !== oldNote;
-
     if (note !== undefined) order.note = note;
 
     await order.save();
