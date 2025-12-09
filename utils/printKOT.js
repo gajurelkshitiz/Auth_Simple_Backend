@@ -29,25 +29,47 @@ export const printKOT = async (kot) => {
     text += `Time  : ${time}\n`;
     text += "--------------------------------\n";
 
-    kot.items.forEach((it) => {
+    if (kot.note && kot.note.trim() !== "") {
+      text += `NOTE: ${kot.note.trim()}\n`;
+      text += "--------------------------------\n";
+    }
+
+    const addedItems = kot.items.filter((it) => it.changeType === "ADDED");
+    const voidedItems = kot.items.filter((it) => it.changeType === "VOIDED");
+    const updatedItems = kot.items.filter((it) => it.changeType === "UPDATED");
+
+    const printItemLine = (label, it) => {
       const name = it.name?.toUpperCase() || "Unnamed Item";
-      const unit = it.unitName || "";
       const qty = it.quantity;
       const oldQty = it.oldQuantity;
-      const changeType = it.changeType || kot.type;
+      const unit = it.unit || "";
 
-      if (changeType === "ADDED") {
-        text += `ADDED   : ${name} (${unit}) x${qty}\n`;
-      } else if (changeType === "VOIDED") {
-        text += `CANCEL  : ${name} (${unit}) x${qty}\n`;
-      } else if (changeType === "UPDATED") {
-        text += `UPDATED : ${name} (${unit}) ${oldQty} -> ${qty}\n`;
+      if (label === "UPDATED") {
+        return `UPDATED : ${name} ${oldQty} -> ${qty} ${unit}\n`;
       } else {
-        text += `${name} (${unit}) x${qty}\n`;
+        return `${label.padEnd(7)}: ${name} (${unit}) x${qty}\n`;
       }
-    });
+    };
 
-    text += "--------------------------------\n";
+    if (addedItems.length > 0) {
+      text += "---- ADDED ITEMS ----\n";
+      addedItems.forEach((it) => (text += printItemLine("ADDED", it)));
+      text += "---------------------\n";
+    }
+
+    if (voidedItems.length > 0) {
+      text += "---- CANCELLED ITEMS ----\n";
+      voidedItems.forEach((it) => (text += printItemLine("CANCEL", it)));
+      text += "-------------------------\n";
+    }
+
+    if (updatedItems.length > 0) {
+      text += "---- UPDATED ITEMS ----\n";
+      updatedItems.forEach((it) => (text += printItemLine("UPDATED", it)));
+      text += "----------------------\n";
+    }
+
+    text += "********************************\n";
     text += "     PLEASE PREPARE IMMEDIATELY\n";
     text += "********************************\n\n\n";
 
