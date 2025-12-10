@@ -23,6 +23,7 @@ const kotSchema = new mongoose.Schema(
       enum: ["NEW", "UPDATE", "VOID"],
       required: true,
     },
+     note: { type: String, default: "" },
     items: [
       {
         item: { type: mongoose.Schema.Types.ObjectId, ref: "Item" },

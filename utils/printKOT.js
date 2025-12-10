@@ -68,7 +68,6 @@ export const printKOT = async (kot) => {
       updatedItems.forEach((it) => (text += printItemLine("UPDATED", it)));
       text += "----------------------\n";
     }
-
     text += "********************************\n";
     text += "     PLEASE PREPARE IMMEDIATELY\n";
     text += "********************************\n\n\n";

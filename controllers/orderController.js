@@ -24,16 +24,14 @@ function diffOrderItems(oldItems = [], newItems = []) {
 
   oldItems.forEach((it) =>
     oldMap.set(key(it), {
-      item: it.item,
-      unitName: it.unitName ?? "",
+      ...it,
       quantity: Number(it.quantity || 0),
     })
   );
 
   newItems.forEach((it) =>
     newMap.set(key(it), {
-      item: it.item,
-      unitName: it.unitName ?? "",
+      ...it,
       quantity: Number(it.quantity || 0),
     })
   );
@@ -48,10 +46,8 @@ function diffOrderItems(oldItems = [], newItems = []) {
       added.push(newIt);
     } else if (oldIt.quantity !== newIt.quantity) {
       qtyChanged.push({
-        item: newIt.item,
-        unitName: newIt.unitName,
+        ...newIt,
         oldQty: oldIt.quantity,
-        newQty: newIt.quantity,
       });
     }
   }
@@ -288,6 +284,7 @@ export const createOrder = async (req, res) => {
           tableId: table._id,
           orderId: order._id,
           items: order.items,
+          note: note || "",
           createdAt: new Date(),
         });
       } catch (err) {
@@ -458,7 +455,7 @@ export const updateOrder = async (req, res) => {
       for (const it of removed) {
         kotItems.push({
           item: it.item,
-          name: itemMap.get(it.item.toString())?.name,
+          name: itemMap.get(it.item.toString())?.name || it.name,
           unitName: it.unitName,
           quantity: it.quantity,
           changeType: "VOIDED",
@@ -468,7 +465,7 @@ export const updateOrder = async (req, res) => {
       for (const it of added) {
         kotItems.push({
           item: it.item,
-          name: itemMap.get(it.item.toString())?.name,
+          name: itemMap.get(it.item.toString())?.name || it.name,
           unitName: it.unitName,
           quantity: it.quantity,
           changeType: "ADDED",
@@ -478,7 +475,7 @@ export const updateOrder = async (req, res) => {
       for (const ch of qtyChanged) {
         kotItems.push({
           item: ch.item,
-          name: itemMap.get(ch.item.toString())?.name,
+          name: itemMap.get(ch.item.toString())?.name || ch.name,
           unitName: ch.unitName,
           oldQuantity: ch.oldQty,
           quantity: ch.newQty,
@@ -527,7 +524,7 @@ export const updateOrder = async (req, res) => {
         table: order.table._id,
         order: order._id,
         type: "UPDATE",
-        note: (order.note ?? "").toString(),
+        note: order.note,
         items: kotPayloadItems,
         createdBy: req.user.userId,
         createdByRole: req.user.role,
@@ -538,6 +535,15 @@ export const updateOrder = async (req, res) => {
       } catch (err) {
         console.warn("[KOT print error]", err?.message || err);
       }
+      io.to(restaurantId.toString()).emit("kot:update", {
+        type: "UPDATE",
+        table: order.table?.name,
+        tableId: order.table?._id,
+        orderId: order._id,
+        items: kotPayloadItems,
+        note: order.note || "",
+        createdAt: new Date(),
+      });
     }
 
     return res
