@@ -23,17 +23,10 @@ function diffOrderItems(oldItems = [], newItems = []) {
   const newMap = new Map();
 
   oldItems.forEach((it) =>
-    oldMap.set(key(it), {
-      ...it,
-      quantity: Number(it.quantity || 0),
-    })
+    oldMap.set(key(it), { ...it, quantity: Number(it.quantity || 0) })
   );
-
   newItems.forEach((it) =>
-    newMap.set(key(it), {
-      ...it,
-      quantity: Number(it.quantity || 0),
-    })
+    newMap.set(key(it), { ...it, quantity: Number(it.quantity || 0) })
   );
 
   const added = [];
@@ -45,18 +38,19 @@ function diffOrderItems(oldItems = [], newItems = []) {
     if (!oldIt) {
       added.push(newIt);
     } else if (oldIt.quantity !== newIt.quantity) {
+      const delta = newIt.quantity - oldIt.quantity;
       qtyChanged.push({
         ...newIt,
         oldQty: oldIt.quantity,
         newQty: newIt.quantity,
+        delta: Math.abs(delta),
+        changeType: delta > 0 ? "ADDED" : "VOIDED",
       });
     }
   }
 
   for (const [k, oldIt] of oldMap.entries()) {
-    if (!newMap.has(k)) {
-      removed.push(oldIt);
-    }
+    if (!newMap.has(k)) removed.push(oldIt);
   }
 
   return { added, removed, qtyChanged };
@@ -429,12 +423,12 @@ export const updateOrder = async (req, res) => {
     if (items && Array.isArray(items)) {
       if (!validateItems(items, res)) return;
 
-      const baseItems =
-        order.previousItems && order.previousItems.length > 0
-          ? order.previousItems
-          : order.items;
+      const baseItems = order.previousItems?.length
+        ? order.previousItems
+        : order.items;
 
       const { added, removed, qtyChanged } = diffOrderItems(baseItems, items);
+
       hasChanges =
         added.length > 0 || removed.length > 0 || qtyChanged.length > 0;
 
@@ -444,46 +438,34 @@ export const updateOrder = async (req, res) => {
         ...qtyChanged.map((it) => it.item),
       ].filter(Boolean);
 
-      let itemMap = new Map();
-      if (itemIds.length) {
-        const itemDocs = await Item.find({ _id: { $in: itemIds } });
-        itemMap = new Map(itemDocs.map((d) => [d._id.toString(), d]));
-      }
+      const itemDocs = itemIds.length
+        ? await Item.find({ _id: { $in: itemIds } })
+        : [];
+      const itemMap = new Map(itemDocs.map((d) => [d._id.toString(), d]));
 
-      kotItems = [];
-
-      for (const it of removed) {
-        kotItems.push({
+      kotItems = [
+        ...removed.map((it) => ({
           item: it.item,
           name: itemMap.get(it.item.toString())?.name || it.name,
           unitName: it.unitName,
           quantity: it.quantity,
           changeType: "VOIDED",
-        });
-      }
-
-      for (const it of added) {
-        kotItems.push({
+        })),
+        ...added.map((it) => ({
           item: it.item,
           name: itemMap.get(it.item.toString())?.name || it.name,
           unitName: it.unitName,
           quantity: it.quantity,
           changeType: "ADDED",
-        });
-      }
-
-      for (const ch of qtyChanged) {
-        const delta = ch.newQty - ch.oldQty;
-        if (delta !== 0) {
-          kotItems.push({
-            item: ch.item,
-            name: itemMap.get(ch.item.toString())?.name || ch.name,
-            unitName: ch.unitName,
-            quantity: Math.abs(delta),
-            changeType: delta > 0 ? "ADDED" : "REMOVED",
-          });
-        }
-      }
+        })),
+        ...qtyChanged.map((it) => ({
+          item: it.item,
+          name: itemMap.get(it.item.toString())?.name || it.name,
+          unitName: it.unitName,
+          quantity: it.delta,
+          changeType: it.changeType,
+        })),
+      ];
 
       order.items = items;
       order.totalAmount = computeTotals(items).totalAmount;
@@ -496,32 +478,14 @@ export const updateOrder = async (req, res) => {
     const noteChanged = note !== undefined && note !== oldNote;
     if (note !== undefined) order.note = note;
 
-    await order.save();
-
-    io.to(restaurantId.toString()).emit("order:updated", {
-      orderId: order._id,
-      tableId: order.table?._id,
-      totalAmount: order.totalAmount,
-      items: order.items,
-      updatedAt: new Date(),
-    });
-
     if (order.orderType === "dine-in" && (hasChanges || noteChanged)) {
-      const kotPayloadItems = kotItems.map((it) => ({
-        item: it.item,
-        name: it.name,
-        unitName: it.unitName,
-        quantity: it.quantity,
-        changeType: it.changeType,
-      }));
-
       const kot = await KOT.create({
         restaurant: restaurantId,
         table: order.table._id,
         order: order._id,
         type: "UPDATE",
         note: order.note,
-        items: kotPayloadItems,
+        items: kotItems,
         createdBy: req.user.userId,
         createdByRole: req.user.role,
       });
@@ -537,7 +501,7 @@ export const updateOrder = async (req, res) => {
         table: order.table?.name,
         tableId: order.table?._id,
         orderId: order._id,
-        items: kotPayloadItems,
+        items: kotItems,
         note: order.note || "",
         createdAt: new Date(),
       });
@@ -548,8 +512,17 @@ export const updateOrder = async (req, res) => {
         quantity: it.quantity,
         price: it.price,
       }));
-      await order.save();
     }
+
+    await order.save();
+
+    io.to(restaurantId.toString()).emit("order:updated", {
+      orderId: order._id,
+      tableId: order.table?._id,
+      totalAmount: order.totalAmount,
+      items: order.items,
+      updatedAt: new Date(),
+    });
 
     return res
       .status(200)
