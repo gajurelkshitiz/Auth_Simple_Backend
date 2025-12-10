@@ -57,6 +57,7 @@ const orderSchema = new mongoose.Schema(
     },
 
     items: [orderItemSchema],
+    previousItems: [orderItemSchema],
 
     totalAmount: { type: Number, required: true, default: 0 },
     deliveryCharge: { type: Number, default: 0, min: 0 },
