@@ -13,11 +13,8 @@ import {
 } from "./itemStockController.js";
 
 function diffOrderItems(oldItems = [], newItems = []) {
-  const key = (it) => {
-    const itemId = it?.item?.toString?.() ?? String(it?.item ?? "");
-    const unit = (it?.unitName ?? "").toString();
-    return `${itemId}__${unit}`;
-  };
+  const key = (it) =>
+    `${it?.item?.toString?.() || it?.item || ""}__${it?.unitName || ""}`;
 
   const oldMap = new Map();
   const newMap = new Map();
@@ -29,24 +26,15 @@ function diffOrderItems(oldItems = [], newItems = []) {
     newMap.set(key(it), { ...it, quantity: Number(it.quantity || 0) })
   );
 
-  const added = [];
-  const removed = [];
-  const qtyChanged = [];
+  const added = [],
+    removed = [],
+    qtyChanged = [];
 
   for (const [k, newIt] of newMap.entries()) {
     const oldIt = oldMap.get(k);
-    if (!oldIt) {
-      added.push(newIt);
-    } else if (oldIt.quantity !== newIt.quantity) {
-      const delta = newIt.quantity - oldIt.quantity;
-      qtyChanged.push({
-        ...newIt,
-        oldQty: oldIt.quantity,
-        newQty: newIt.quantity,
-        delta: Math.abs(delta),
-        changeType: delta > 0 ? "ADDED" : "VOIDED",
-      });
-    }
+    if (!oldIt) added.push(newIt);
+    else if (oldIt.quantity !== newIt.quantity)
+      qtyChanged.push({ ...newIt, oldQty: oldIt.quantity });
   }
 
   for (const [k, oldIt] of oldMap.entries()) {
@@ -79,11 +67,7 @@ function computeTotals(items = [], deliveryCharge = 0) {
     (sum, it) => sum + Number(it.price || 0) * Number(it.quantity || 0),
     0
   );
-
-  return {
-    itemsTotal,
-    totalAmount: itemsTotal + Number(deliveryCharge || 0),
-  };
+  return { itemsTotal, totalAmount: itemsTotal + Number(deliveryCharge || 0) };
 }
 
 function applyPayment(order, paymentStatus, customerName, paymentMethod = {}) {
@@ -94,10 +78,8 @@ function applyPayment(order, paymentStatus, customerName, paymentMethod = {}) {
 
   const discountAmount = (itemsTotal * discountPercent) / 100;
   const afterDiscount = itemsTotal - discountAmount;
-
   const vatAmount = (afterDiscount * vatPercent) / 100;
   const afterVAT = afterDiscount + vatAmount;
-
   const finalAmount = afterVAT + deliveryCharge;
 
   order.discountAmount = discountAmount;
@@ -138,7 +120,7 @@ async function occupyTable(tableId, orderId) {
   });
 }
 
-function validateItems(items, res) {
+function validateItems(items, res, isUpdate = false) {
   if (!Array.isArray(items) || items.length === 0) {
     res.status(400).json({ error: "Items are required (non-empty array)" });
     return false;
@@ -157,20 +139,29 @@ function validateItems(items, res) {
     }
     const price = Number(it.price);
     const qty = Number(it.quantity);
+    const minQty = isUpdate ? 0 : 1;
     if (!Number.isFinite(price) || price < 0) {
       res
         .status(400)
         .json({ error: `items[${i}].price must be a non-negative number` });
       return false;
     }
-    if (!Number.isInteger(qty) || qty < 1) {
-      res
-        .status(400)
-        .json({ error: `items[${i}].quantity must be an integer >= 1` });
+    if (!Number.isInteger(qty) || qty < minQty) {
+      res.status(400).json({
+        error: `items[${i}].quantity must be an integer >= ${minQty}`,
+      });
       return false;
     }
   }
   return true;
+}
+
+function itemIdOf(it) {
+  if (!it) return null;
+  if (typeof it === "string") return it;
+  if (it._id) return it._id.toString();
+  if (it.item) return itemIdOf(it.item);
+  return null;
 }
 
 export const createOrder = async (req, res) => {
@@ -192,10 +183,11 @@ export const createOrder = async (req, res) => {
       paymentMethod = {},
     } = req.body ?? {};
 
-    if (orderType === "dine-in") {
-      if (!tableId || !mongoose.Types.ObjectId.isValid(tableId)) {
-        return res.status(400).json({ error: "Invalid or missing tableId" });
-      }
+    if (
+      orderType === "dine-in" &&
+      (!tableId || !mongoose.Types.ObjectId.isValid(tableId))
+    ) {
+      return res.status(400).json({ error: "Invalid or missing tableId" });
     }
 
     if (!validateItems(items, res)) return;
@@ -205,11 +197,11 @@ export const createOrder = async (req, res) => {
 
     if (orderType === "dine-in") {
       table = await Table.findById(tableId).populate("area", "name");
-      if (!table || table.restaurant.toString() !== restaurantId.toString()) {
+      if (!table || table.restaurant.toString() !== restaurantId.toString())
         return res
           .status(404)
           .json({ error: "Table not found in your restaurant" });
-      }
+
       areaId = table.area?._id ?? table.area;
       if (!areaId)
         return res
@@ -254,6 +246,7 @@ export const createOrder = async (req, res) => {
       createdAt: new Date(),
     });
 
+    // Create initial KOT
     if (orderType === "dine-in") {
       const kot = await KOT.create({
         restaurant: restaurantId,
@@ -263,7 +256,7 @@ export const createOrder = async (req, res) => {
         note: note || "",
         items: order.items.map((it) => ({
           item: it.item,
-          name: it.item?.name || undefined,
+          name: it.item?.name,
           unitName: it.unitName,
           quantity: it.quantity,
         })),
@@ -279,7 +272,6 @@ export const createOrder = async (req, res) => {
           tableId: table._id,
           orderId: order._id,
           items: order.items,
-          note: note || "",
           createdAt: new Date(),
         });
       } catch (err) {
@@ -344,18 +336,15 @@ export const cancelOrder = async (req, res) => {
       _id: id,
       restaurant: restaurantId,
     }).populate("table");
-
     if (!order) return res.status(404).json({ error: "Order not found" });
 
-    if (order.status === "checkedout") {
+    if (order.status === "checkedout")
       return res
         .status(400)
         .json({ error: "Checked-out orders cannot be cancelled" });
-    }
 
-    if (order.status === "cancelled") {
+    if (order.status === "cancelled")
       return res.status(400).json({ error: "Order already cancelled" });
-    }
 
     order.cancelReason = cancelReason;
     order.status = "cancelled";
@@ -417,58 +406,104 @@ export const updateOrder = async (req, res) => {
     }).populate("table");
     if (!order) return res.status(404).json({ error: "Order not found" });
 
+    const oldItems = (order.items || []).map((it) => ({
+      item: itemIdOf(it.item) || it.item,
+      unitName: it.unitName,
+      quantity: Number(it.quantity || 0),
+      name: it.name,
+    }));
+
     let hasChanges = false;
     let kotItems = [];
 
     if (items && Array.isArray(items)) {
-      if (!validateItems(items, res)) return;
+      if (!validateItems(items, res, true)) return;
 
-      const baseItems = order.previousItems?.length
-        ? order.previousItems
-        : order.items;
+      const normalizedNew = items.map((it) => ({
+        item: itemIdOf(it.item) || it.item,
+        unitName: it.unitName,
+        quantity: Number(it.quantity || 0),
+        price: Number(it.price || 0),
+        name: it.name,
+      }));
 
-      const { added, removed, qtyChanged } = diffOrderItems(baseItems, items);
+      const { added, removed, qtyChanged } = diffOrderItems(
+        oldItems,
+        normalizedNew
+      );
 
       hasChanges =
         added.length > 0 || removed.length > 0 || qtyChanged.length > 0;
 
-      const itemIds = [
-        ...added.map((it) => it.item),
-        ...removed.map((it) => it.item),
-        ...qtyChanged.map((it) => it.item),
-      ].filter(Boolean);
+      const itemIds = Array.from(
+        new Set(
+          [
+            ...added.map((x) => itemIdOf(x)),
+            ...removed.map((x) => itemIdOf(x)),
+            ...qtyChanged.map((x) => itemIdOf(x)),
+          ].filter(Boolean)
+        )
+      );
 
-      const itemDocs = itemIds.length
-        ? await Item.find({ _id: { $in: itemIds } })
-        : [];
-      const itemMap = new Map(itemDocs.map((d) => [d._id.toString(), d]));
+      let itemMap = new Map();
+      if (itemIds.length > 0) {
+        const itemDocs = await Item.find({ _id: { $in: itemIds } });
+        itemMap = new Map(itemDocs.map((d) => [d._id.toString(), d]));
+      }
 
-      kotItems = [
-        ...removed.map((it) => ({
-          item: it.item,
-          name: itemMap.get(it.item.toString())?.name || it.name,
+      removed.forEach((it) => {
+        const iid = itemIdOf(it);
+        const name =
+          (iid && itemMap.get(iid)?.name) || it.name || "Unknown Item";
+        kotItems.push({
+          item: iid,
+          name,
           unitName: it.unitName,
           quantity: it.quantity,
           changeType: "VOIDED",
-        })),
-        ...added.map((it) => ({
-          item: it.item,
-          name: itemMap.get(it.item.toString())?.name || it.name,
+        });
+      });
+
+      added.forEach((it) => {
+        const iid = itemIdOf(it);
+        const name =
+          (iid && itemMap.get(iid)?.name) || it.name || "Unknown Item";
+        kotItems.push({
+          item: iid,
+          name,
           unitName: it.unitName,
           quantity: it.quantity,
           changeType: "ADDED",
-        })),
-        ...qtyChanged.map((it) => ({
-          item: it.item,
-          name: itemMap.get(it.item.toString())?.name || it.name,
-          unitName: it.unitName,
-          quantity: it.delta,
-          changeType: it.changeType,
-        })),
-      ];
+        });
+      });
 
-      order.items = items;
-      order.totalAmount = computeTotals(items).totalAmount;
+      qtyChanged.forEach((it) => {
+        const iid = itemIdOf(it);
+        const name =
+          (iid && itemMap.get(iid)?.name) || it.name || "Unknown Item";
+        const diff = Number(it.quantity) - Number(it.oldQty || 0);
+
+        kotItems.push({
+          item: iid,
+          name,
+          unitName: it.unitName,
+          oldQuantity: Number(it.oldQty || 0),
+          quantity: Number(it.quantity || 0),
+          changeType: diff < 0 ? "REDUCED" : "UPDATED",
+        });
+      });
+
+      const filteredForOrder = normalizedNew
+        .filter((it) => Number(it.quantity) > 0)
+        .map((it) => ({
+          item: it.item,
+          unitName: it.unitName,
+          quantity: it.quantity,
+          price: it.price,
+        }));
+
+      order.items = filteredForOrder;
+      order.totalAmount = computeTotals(order.items).totalAmount;
     }
 
     if (paymentStatus)
@@ -477,42 +512,6 @@ export const updateOrder = async (req, res) => {
     const oldNote = order.note ?? "";
     const noteChanged = note !== undefined && note !== oldNote;
     if (note !== undefined) order.note = note;
-
-    if (order.orderType === "dine-in" && (hasChanges || noteChanged)) {
-      const kot = await KOT.create({
-        restaurant: restaurantId,
-        table: order.table._id,
-        order: order._id,
-        type: "UPDATE",
-        note: order.note,
-        items: kotItems,
-        createdBy: req.user.userId,
-        createdByRole: req.user.role,
-      });
-
-      try {
-        await printKOT(await kot.populate(["table", "order"]));
-      } catch (err) {
-        console.warn("[KOT print error]", err?.message || err);
-      }
-
-      io.to(restaurantId.toString()).emit("kot:update", {
-        type: "UPDATE",
-        table: order.table?.name,
-        tableId: order.table?._id,
-        orderId: order._id,
-        items: kotItems,
-        note: order.note || "",
-        createdAt: new Date(),
-      });
-
-      order.previousItems = order.items.map((it) => ({
-        item: it.item,
-        unitName: it.unitName,
-        quantity: it.quantity,
-        price: it.price,
-      }));
-    }
 
     await order.save();
 
@@ -524,12 +523,45 @@ export const updateOrder = async (req, res) => {
       updatedAt: new Date(),
     });
 
+    if (order.orderType === "dine-in" && (hasChanges || noteChanged)) {
+      const kotPayloadItems = kotItems.map((it) => {
+        const out = {
+          item: it.item,
+          name: it.name,
+          unitName: it.unitName,
+          quantity: it.quantity,
+          changeType: it.changeType,
+        };
+        if (["UPDATED", "REDUCED"].includes(it.changeType)) {
+          out.oldQuantity = it.oldQuantity;
+        }
+        return out;
+      });
+
+      const kot = await KOT.create({
+        restaurant: restaurantId,
+        table: order.table._id,
+        order: order._id,
+        type: "UPDATE",
+        note: (order.note ?? "").toString(),
+        items: kotPayloadItems,
+        createdBy: req.user.userId,
+        createdByRole: req.user.role,
+      });
+
+      try {
+        await printKOT(await kot.populate(["table", "order"]));
+      } catch (err) {
+        console.warn("[KOT print error]", err?.message || err);
+      }
+    }
+
     return res
       .status(200)
       .json({ message: "Order updated successfully", order });
   } catch (err) {
     console.error("[ORDER update]", err);
-    res.status(500).json({ error: "Internal Server Error" });
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 };
 

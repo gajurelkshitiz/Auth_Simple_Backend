@@ -1,0 +1,15 @@
+********************************
+       KITCHEN ORDER TICKET
+********************************
+Table : Tablee-I
+Order : C2FAA6
+Type  : UPDATE
+Time  : 09:41:51 PM
+--------------------------------
+NOTE: Order with one item removed
+--------------------------------
+********************************
+     PLEASE PREPARE IMMEDIATELY
+********************************
+
+
