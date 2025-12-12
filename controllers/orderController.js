@@ -452,14 +452,27 @@ export const updateOrder = async (req, res) => {
         const iid = itemIdOf(it);
         const name =
           (iid && itemMap.get(iid)?.name) || it.name || "Unknown Item";
+
+        let changeType = it.changeType;
+        if (!changeType) {
+          if (added.includes(it)) changeType = "ADDED";
+          else if (removed.includes(it)) changeType = "VOIDED";
+          else if (qtyChanged.includes(it)) {
+            changeType = it.quantity > it.oldQty ? "INCREASED" : "REDUCED";
+            it.oldQty =
+              it.oldQty ??
+              oldItems.find((oi) => itemIdOf(oi.item) === iid)?.quantity;
+          }
+        }
+
         const kotItem = {
           item: iid,
           name,
           unitName: it.unitName,
           quantity: it.quantity,
-          changeType: it.changeType,
+          changeType,
         };
-        if (["REDUCED", "UPDATED"].includes(it.changeType)) {
+        if (["REDUCED", "INCREASED"].includes(changeType)) {
           kotItem.oldQuantity = it.oldQty;
         }
         kotItems.push(kotItem);
