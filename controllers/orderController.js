@@ -442,42 +442,55 @@ export const updateOrder = async (req, res) => {
             .filter(Boolean)
         )
       );
-      let itemMap = new Map();
-      if (itemIds.length > 0) {
-        const itemDocs = await Item.find({ _id: { $in: itemIds } });
-        itemMap = new Map(itemDocs.map((d) => [d._id.toString(), d]));
-      }
+      const itemDocs = itemIds.length
+        ? await Item.find({ _id: { $in: itemIds } })
+        : [];
+      const itemMap = new Map(itemDocs.map((d) => [d._id.toString(), d]));
 
-      [...added, ...removed, ...qtyChanged].forEach((it) => {
+      [...added].forEach((it) => {
         const iid = itemIdOf(it);
-        const name =
-          (iid && itemMap.get(iid)?.name) || it.name || "Unknown Item";
-
-        let changeType = it.changeType;
-        if (!changeType) {
-          if (added.includes(it)) changeType = "ADDED";
-          else if (removed.includes(it)) changeType = "VOIDED";
-          else if (qtyChanged.includes(it)) {
-            changeType = it.quantity > it.oldQty ? "INCREASED" : "REDUCED";
-            it.oldQty =
-              it.oldQty ??
-              oldItems.find((oi) => itemIdOf(oi.item) === iid)?.quantity;
-          }
-        }
-
-        const kotItem = {
+        kotItems.push({
           item: iid,
-          name,
+          name: (iid && itemMap.get(iid)?.name) || it.name,
           unitName: it.unitName,
           quantity: it.quantity,
-          changeType,
-        };
-        if (["REDUCED", "INCREASED"].includes(changeType)) {
-          kotItem.oldQuantity = it.oldQty;
-        }
-        kotItems.push(kotItem);
+          changeType: "ADDED",
+        });
       });
 
+      [...removed].forEach((it) => {
+        const iid = itemIdOf(it);
+        kotItems.push({
+          item: iid,
+          name: (iid && itemMap.get(iid)?.name) || it.name,
+          unitName: it.unitName,
+          quantity: it.quantity,
+          changeType: "CANCELLED",
+        });
+      });
+
+      [...qtyChanged].forEach((it) => {
+        const iid = itemIdOf(it);
+        if (it.quantity > it.oldQty) {
+          kotItems.push({
+            item: iid,
+            name: (iid && itemMap.get(iid)?.name) || it.name,
+            unitName: it.unitName,
+            quantity: it.quantity,
+            oldQuantity: it.oldQty,
+            changeType: "INCREASED",
+          });
+        } else if (it.quantity < it.oldQty) {
+          kotItems.push({
+            item: iid,
+            name: (iid && itemMap.get(iid)?.name) || it.name,
+            unitName: it.unitName,
+            quantity: it.quantity,
+            oldQuantity: it.oldQty,
+            changeType: "REDUCED",
+          });
+        }
+      });
       order.items = normalizedNew
         .filter((it) => it.quantity > 0)
         .map((it) => ({
@@ -507,7 +520,11 @@ export const updateOrder = async (req, res) => {
       updatedAt: new Date(),
     });
 
-    if (order.orderType === "dine-in" && (hasChanges || noteChanged)) {
+    if (
+      order.orderType === "dine-in" &&
+      (hasChanges || noteChanged) &&
+      kotItems.length
+    ) {
       const kot = await KOT.create({
         restaurant: restaurantId,
         table: order.table._id,

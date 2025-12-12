@@ -34,14 +34,12 @@ export const printKOT = async (kot) => {
       text += "--------------------------------\n";
     }
 
-    // Separate change types
     const addedItems = kot.items.filter((it) => it.changeType === "ADDED");
-    const voidedItems = kot.items.filter((it) => it.changeType === "VOIDED");
-    const updatedItems = kot.items.filter(
-      (it) =>
-        it.changeType === "UPDATED" ||
-        it.changeType === "REDUCED" ||
-        it.changeType === "INCREASED"
+    const cancelledItems = kot.items.filter(
+      (it) => it.changeType === "VOIDED" || it.changeType === "CANCELLED"
+    );
+    const changedItems = kot.items.filter(
+      (it) => it.changeType === "REDUCED" || it.changeType === "INCREASED"
     );
 
     const printItemLine = (label, it) => {
@@ -53,19 +51,13 @@ export const printKOT = async (kot) => {
 
       switch (label) {
         case "ADDED":
-          return `ADDED   : ${name} ${unitText} x${qty}\n`;
-        case "CANCEL":
-          return `CANCEL  : ${name} ${unitText} x${qty}\n`;
+          return `ADDED    : ${name} ${unitText} x${qty}\n`;
+        case "CANCELLED":
+          return `CANCELLED: ${name} ${unitText} x${qty}\n`;
         case "REDUCED":
-          const reduced = oldQty - qty;
-          return `REDUCED : ${name} -${reduced} ${unitText} ${oldQty} -> ${qty}\n`;
+          return `REDUCED  : ${name} -${oldQty - qty} ${unitText}\n`;
         case "INCREASED":
-          const increased = qty - oldQty;
-          return `INCREASED : ${name} +${increased} ${unitText} ${oldQty} -> ${qty}\n`;
-        case "UPDATED":
-          if (qty < oldQty) return printItemLine("REDUCED", it);
-          if (qty > oldQty) return printItemLine("INCREASED", it);
-          return null;
+          return `INCREASED: ${name} +${qty - oldQty} ${unitText}\n`;
         default:
           return null;
       }
@@ -80,20 +72,19 @@ export const printKOT = async (kot) => {
       text += "---------------------\n";
     }
 
-    if (voidedItems.length > 0) {
+    if (cancelledItems.length > 0) {
       text += "---- CANCELLED ITEMS ----\n";
-      voidedItems.forEach((it) => {
-        const line = printItemLine("CANCEL", it);
+      cancelledItems.forEach((it) => {
+        const line = printItemLine("CANCELLED", it);
         if (line) text += line;
       });
       text += "-------------------------\n";
     }
 
-    if (updatedItems.length > 0) {
-      text += "---- UPDATED ITEMS ----\n";
-      updatedItems.forEach((it) => {
-        const line =
-          printItemLine(it.changeType, it) || printItemLine("UPDATED", it);
+    if (changedItems.length > 0) {
+      text += "---- CHANGED ITEMS ----\n";
+      changedItems.forEach((it) => {
+        const line = printItemLine(it.changeType, it);
         if (line) text += line;
       });
       text += "----------------------\n";
