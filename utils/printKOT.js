@@ -34,37 +34,41 @@ export const printKOT = async (kot) => {
       text += "--------------------------------\n";
     }
 
+    // Separate change types
     const addedItems = kot.items.filter((it) => it.changeType === "ADDED");
     const voidedItems = kot.items.filter((it) => it.changeType === "VOIDED");
-    const updatedItems = kot.items.filter((it) => it.changeType === "UPDATED");
+    const updatedItems = kot.items.filter(
+      (it) =>
+        it.changeType === "UPDATED" ||
+        it.changeType === "REDUCED" ||
+        it.changeType === "INCREASED"
+    );
 
     const printItemLine = (label, it) => {
       const name = it.name?.toUpperCase() || "Unnamed Item";
       const qty = it.quantity;
-      const oldQty = it.oldQuantity;
+      const oldQty = it.oldQuantity || 0;
       const unit = it.unitName || "";
+      const unitText = unit ? `(${unit})` : "";
 
-      if (label === "ADDED") {
-        return `ADDED   : ${name} (${unit}) x${qty}\n`;
-      }
-
-      if (label === "CANCEL") {
-        return `CANCEL  : ${name} (${unit}) x${qty}\n`;
-      }
-
-      if (label === "UPDATED") {
-        if (qty < oldQty) {
-          const diff = oldQty - qty;
-          return `REDUCED : ${name} -${diff} (${unit}) ${oldQty} -> ${qty}\n`;
-        } else if (qty > oldQty) {
-          const diff = qty - oldQty;
-          return `INCREASED : ${name} +${diff} (${unit}) ${oldQty} -> ${qty}\n`;
-        } else {
+      switch (label) {
+        case "ADDED":
+          return `ADDED   : ${name} ${unitText} x${qty}\n`;
+        case "CANCEL":
+          return `CANCEL  : ${name} ${unitText} x${qty}\n`;
+        case "REDUCED":
+          const reduced = oldQty - qty;
+          return `REDUCED : ${name} -${reduced} ${unitText} ${oldQty} -> ${qty}\n`;
+        case "INCREASED":
+          const increased = qty - oldQty;
+          return `INCREASED : ${name} +${increased} ${unitText} ${oldQty} -> ${qty}\n`;
+        case "UPDATED":
+          if (qty < oldQty) return printItemLine("REDUCED", it);
+          if (qty > oldQty) return printItemLine("INCREASED", it);
           return null;
-        }
+        default:
+          return null;
       }
-
-      return null;
     };
 
     if (addedItems.length > 0) {
@@ -88,7 +92,8 @@ export const printKOT = async (kot) => {
     if (updatedItems.length > 0) {
       text += "---- UPDATED ITEMS ----\n";
       updatedItems.forEach((it) => {
-        const line = printItemLine("UPDATED", it);
+        const line =
+          printItemLine(it.changeType, it) || printItemLine("UPDATED", it);
         if (line) text += line;
       });
       text += "----------------------\n";
