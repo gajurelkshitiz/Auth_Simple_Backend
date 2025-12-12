@@ -437,64 +437,36 @@ export const updateOrder = async (req, res) => {
 
       const itemIds = Array.from(
         new Set(
-          [
-            ...added.map((x) => itemIdOf(x)),
-            ...removed.map((x) => itemIdOf(x)),
-            ...qtyChanged.map((x) => itemIdOf(x)),
-          ].filter(Boolean)
+          [...added, ...removed, ...qtyChanged]
+            .map((x) => itemIdOf(x))
+            .filter(Boolean)
         )
       );
-
       let itemMap = new Map();
       if (itemIds.length > 0) {
         const itemDocs = await Item.find({ _id: { $in: itemIds } });
         itemMap = new Map(itemDocs.map((d) => [d._id.toString(), d]));
       }
 
-      removed.forEach((it) => {
+      [...added, ...removed, ...qtyChanged].forEach((it) => {
         const iid = itemIdOf(it);
         const name =
           (iid && itemMap.get(iid)?.name) || it.name || "Unknown Item";
-        kotItems.push({
+        const kotItem = {
           item: iid,
           name,
           unitName: it.unitName,
           quantity: it.quantity,
-          changeType: "VOIDED",
-        });
+          changeType: it.changeType,
+        };
+        if (["REDUCED", "UPDATED"].includes(it.changeType)) {
+          kotItem.oldQuantity = it.oldQty;
+        }
+        kotItems.push(kotItem);
       });
 
-      added.forEach((it) => {
-        const iid = itemIdOf(it);
-        const name =
-          (iid && itemMap.get(iid)?.name) || it.name || "Unknown Item";
-        kotItems.push({
-          item: iid,
-          name,
-          unitName: it.unitName,
-          quantity: it.quantity,
-          changeType: "ADDED",
-        });
-      });
-
-      qtyChanged.forEach((it) => {
-        const iid = itemIdOf(it);
-        const name =
-          (iid && itemMap.get(iid)?.name) || it.name || "Unknown Item";
-        const diff = Number(it.quantity) - Number(it.oldQty || 0);
-
-        kotItems.push({
-          item: iid,
-          name,
-          unitName: it.unitName,
-          oldQuantity: Number(it.oldQty || 0),
-          quantity: Number(it.quantity || 0),
-          changeType: diff < 0 ? "REDUCED" : "UPDATED",
-        });
-      });
-
-      const filteredForOrder = normalizedNew
-        .filter((it) => Number(it.quantity) > 0)
+      order.items = normalizedNew
+        .filter((it) => it.quantity > 0)
         .map((it) => ({
           item: it.item,
           unitName: it.unitName,
@@ -502,7 +474,6 @@ export const updateOrder = async (req, res) => {
           price: it.price,
         }));
 
-      order.items = filteredForOrder;
       order.totalAmount = computeTotals(order.items).totalAmount;
     }
 
@@ -524,27 +495,13 @@ export const updateOrder = async (req, res) => {
     });
 
     if (order.orderType === "dine-in" && (hasChanges || noteChanged)) {
-      const kotPayloadItems = kotItems.map((it) => {
-        const out = {
-          item: it.item,
-          name: it.name,
-          unitName: it.unitName,
-          quantity: it.quantity,
-          changeType: it.changeType,
-        };
-        if (["UPDATED", "REDUCED"].includes(it.changeType)) {
-          out.oldQuantity = it.oldQuantity;
-        }
-        return out;
-      });
-
       const kot = await KOT.create({
         restaurant: restaurantId,
         table: order.table._id,
         order: order._id,
         type: "UPDATE",
         note: (order.note ?? "").toString(),
-        items: kotPayloadItems,
+        items: kotItems,
         createdBy: req.user.userId,
         createdByRole: req.user.role,
       });
