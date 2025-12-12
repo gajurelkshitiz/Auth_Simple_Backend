@@ -44,30 +44,56 @@ export const printKOT = async (kot) => {
       const oldQty = it.oldQuantity;
       const unit = it.unitName || "";
 
-      if (label === "UPDATED") {
-        return `UPDATED : ${name} ${oldQty} -> ${qty} ${unit}\n`;
-      } else {
-        return `${label.padEnd(7)}: ${name} (${unit}) x${qty}\n`;
+      if (label === "ADDED") {
+        return `ADDED   : ${name} (${unit}) x${qty}\n`;
       }
+
+      if (label === "CANCEL") {
+        return `CANCEL  : ${name} (${unit}) x${qty}\n`;
+      }
+
+      if (label === "UPDATED") {
+        if (qty < oldQty) {
+          const diff = oldQty - qty;
+          return `REDUCED : ${name} -${diff} (${unit}) ${oldQty} -> ${qty}\n`;
+        } else if (qty > oldQty) {
+          const diff = qty - oldQty;
+          return `INCREASED : ${name} +${diff} (${unit}) ${oldQty} -> ${qty}\n`;
+        } else {
+          return null;
+        }
+      }
+
+      return null;
     };
 
     if (addedItems.length > 0) {
       text += "---- ADDED ITEMS ----\n";
-      addedItems.forEach((it) => (text += printItemLine("ADDED", it)));
+      addedItems.forEach((it) => {
+        const line = printItemLine("ADDED", it);
+        if (line) text += line;
+      });
       text += "---------------------\n";
     }
 
     if (voidedItems.length > 0) {
       text += "---- CANCELLED ITEMS ----\n";
-      voidedItems.forEach((it) => (text += printItemLine("CANCEL", it)));
+      voidedItems.forEach((it) => {
+        const line = printItemLine("CANCEL", it);
+        if (line) text += line;
+      });
       text += "-------------------------\n";
     }
 
     if (updatedItems.length > 0) {
       text += "---- UPDATED ITEMS ----\n";
-      updatedItems.forEach((it) => (text += printItemLine("UPDATED", it)));
+      updatedItems.forEach((it) => {
+        const line = printItemLine("UPDATED", it);
+        if (line) text += line;
+      });
       text += "----------------------\n";
     }
+
     text += "********************************\n";
     text += "     PLEASE PREPARE IMMEDIATELY\n";
     text += "********************************\n\n\n";
