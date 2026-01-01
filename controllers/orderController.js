@@ -236,6 +236,16 @@ export const createOrder = async (req, res) => {
 
     if (orderType === "dine-in") await occupyTable(table._id, order._id);
 
+    if (orderType === "dine-in" && table) {
+      io.to(restaurantId.toString()).emit("table:statusChanged", {
+        tableId: table._id,
+        tableName: table.name,
+        status: "occupied",
+        orderId: order._id,
+        updatedAt: new Date(),
+      });
+    }
+
     await order.populate("items.item", "name");
 
     io.to(restaurantId.toString()).emit("order:created", {
@@ -374,6 +384,16 @@ export const cancelOrder = async (req, res) => {
     }
 
     if (order.orderType === "dine-in") await freeTable(order.table);
+
+    if (order.orderType === "dine-in" && order.table) {
+      io.to(restaurantId.toString()).emit("table:statusChanged", {
+        tableId: order.table._id,
+        tableName: order.table.name,
+        status: "available",
+        orderId: order._id,
+        updatedAt: new Date(),
+      });
+    }
 
     await order.save();
 
@@ -566,6 +586,15 @@ export const deleteOrder = async (req, res) => {
 
     if (order.orderType === "dine-in") await freeTable(order.table);
 
+    if (order.orderType === "dine-in" && order.table) {
+      io.to(restaurantId.toString()).emit("table:statusChanged", {
+        tableId: order.table._id,
+        status: "available",
+        orderId: order._id,
+        updatedAt: new Date(),
+      });
+    }
+
     io.to(restaurantId.toString()).emit("order:deleted", {
       orderId: order._id,
       tableId: order.table?._id,
@@ -632,6 +661,16 @@ export const checkoutOrder = async (req, res) => {
     }
 
     if (order.orderType === "dine-in") await freeTable(order.table);
+
+    if (order.orderType === "dine-in" && order.table) {
+      io.to(restaurantId.toString()).emit("table:statusChanged", {
+        tableId: order.table._id,
+        tableName: order.table.name,
+        status: "available",
+        orderId: order._id,
+        updatedAt: new Date(),
+      });
+    }
 
     await order.save();
 
@@ -736,6 +775,16 @@ export const bulkCheckout = async (req, res) => {
         }
 
         if (order.orderType === "dine-in") await freeTable(order.table);
+
+        if (order.orderType === "dine-in" && order.table) {
+          io.to(restaurantId.toString()).emit("table:statusChanged", {
+            tableId: order.table._id,
+            tableName: order.table.name,
+            status: "available",
+            orderId: order._id,
+            updatedAt: new Date(),
+          });
+        }
 
         await order.save();
         ok++;

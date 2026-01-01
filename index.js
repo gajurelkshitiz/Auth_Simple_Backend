@@ -5,6 +5,7 @@ import fs from "fs";
 import cors from "cors";
 import { createServer } from "http";
 import { Server } from "socket.io";
+import jwt from "jsonwebtoken";
 
 import connectDB from "./db/connect.js";
 import itemRouter from "./routes/itemRoute.js";
@@ -70,12 +71,56 @@ export const io = new Server(server, {
   },
 });
 
+app.set("io", io);
+
+io.use((socket, next) => {
+  try {
+    const token = socket.handshake.auth.token || socket.handshake.query.token;
+
+    if (!token) {
+      socket.isAuthenticated = false;
+      console.log(`Client ${socket.id} connected without token`);
+      return next();
+    }
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    socket.userId = decoded.userId;
+    socket.role = decoded.role;
+    socket.restaurantId = decoded.restaurantId;
+    socket.isAuthenticated = true;
+
+    if (socket.restaurantId) {
+      socket.join(socket.restaurantId.toString());
+      console.log(
+        ` User ${socket.userId} (${socket.role}) joined restaurant: ${socket.restaurantId}`
+      );
+    }
+
+    next();
+  } catch (err) {
+    console.warn(`Socket auth failed for ${socket.id}:`, err.message);
+    socket.isAuthenticated = false;
+    next();
+  }
+});
+
 io.on("connection", (socket) => {
-  console.log("Client connected:", socket.id);
+  console.log(
+    "Client connected:",
+    socket.id,
+    "Authenticated:",
+    socket.isAuthenticated
+  );
 
   socket.on("joinRestaurant", (restaurantId) => {
-    socket.join(restaurantId);
-    console.log(` ${socket.id} joined restaurant room: ${restaurantId}`);
+    if (socket.isAuthenticated && socket.restaurantId === restaurantId) {
+      socket.join(restaurantId);
+      console.log(` ${socket.id} joined restaurant room: ${restaurantId}`);
+    } else {
+      console.warn(
+        `Unauthorized join attempt: ${socket.id} -> ${restaurantId}`
+      );
+    }
   });
 
   socket.on("disconnect", () => {
